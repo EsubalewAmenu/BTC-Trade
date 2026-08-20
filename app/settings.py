@@ -29,6 +29,7 @@ class Settings:
     trend_interval: str
     candle_limit: int
     poll_seconds: int
+    max_consecutive_errors: int
     rsi_period: int
     stoch_period: int
     smooth_k: int
@@ -91,7 +92,8 @@ class Settings:
             interval=os.getenv("TRADE_INTERVAL", "5m"),
             trend_interval=os.getenv("TREND_INTERVAL", "15m"),
             candle_limit=_int("CANDLE_LIMIT", 250, 100),
-            poll_seconds=_int("POLL_SECONDS", 15, 5),
+            poll_seconds=_int("POLL_SECONDS", 10, 5),
+            max_consecutive_errors=_int("MAX_CONSECUTIVE_ERRORS", 20, 1),
             rsi_period=_int("RSI_PERIOD", 14, 2),
             stoch_period=_int("STOCH_PERIOD", 14, 2),
             smooth_k=_int("STOCH_K", 3, 1),

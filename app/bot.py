@@ -1,5 +1,6 @@
 import logging
 import signal
+import sys
 import time
 
 from binance_api import BinanceFuturesClient
@@ -68,6 +69,8 @@ def main():
         LOG.exception("LLM startup check failed for %s: %s", decider.provider, type(exc).__name__)
     LOG.warning("PAPER MODE: no Binance order endpoint exists in this application")
 
+    heartbeat = config.data_dir / "heartbeat"
+    consecutive_errors = 0
     while RUNNING:
         try:
             price = client.mark_price(config.symbol)
@@ -94,13 +97,23 @@ def main():
                         position = engine.open(decision, analysis, price)
                         LOG.info("Opened paper position: %s", position)
                         client.send_telegram(str(position), config.telegram_token, config.telegram_chat_id)
+            heartbeat.touch()
+            consecutive_errors = 0
         except Exception:
-            LOG.exception("Paper-trading cycle failed; retrying")
+            consecutive_errors += 1
+            LOG.exception(
+                "Paper-trading cycle failed (%d/%d); retrying",
+                consecutive_errors, config.max_consecutive_errors,
+            )
+            if consecutive_errors >= config.max_consecutive_errors:
+                LOG.critical("Sustained failures detected; exiting so Docker can restart the bot")
+                return 1
         time.sleep(config.poll_seconds)
     LOG.info("Stopped")
+    return 0
 
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
-    main()
+    sys.exit(main())

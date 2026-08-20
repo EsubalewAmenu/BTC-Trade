@@ -41,6 +41,19 @@ docker compose up --build
 Workbook and state files appear under `data/`. Stop with `Ctrl+C`. To reset the simulation,
 stop the container and move the `data` directory to a backup location before restarting.
 
+## Continuous hosting
+
+For the Google Cloud Always Free allowance, use one standard (not Spot) Compute Engine `e2-micro`
+VM in `us-west1`, `us-central1`, or `us-east1`, with at most 30 GB of standard persistent disk.
+Keep `data/` on that persistent boot disk, enable VM automatic restart, and start the bot with
+Docker Compose. Protect the VM's `.env` with file mode `600`; never store it in Git.
+
+The container writes a heartbeat, retries transient Binance HTTP failures, and exits after
+`MAX_CONSECUTIVE_ERRORS` failed cycles so Docker can restart it. It also has a Docker health check,
+a 768 MB memory limit, a one-CPU limit, and rotating JSON logs. These measures improve recovery,
+but no single free VM can guarantee literally uninterrupted service during every zone or provider
+outage.
+
 ## Interpretation
 
 The workbook's Dashboard summarizes balance, closed trades, wins, win rate, net PnL, and profit

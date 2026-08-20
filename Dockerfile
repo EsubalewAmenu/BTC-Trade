@@ -11,4 +11,6 @@ COPY app/ .
 RUN mkdir -p /app/data && chown -R 65532:65532 /app/data
 
 USER 65532:65532
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD ["python", "healthcheck.py"]
 CMD ["python", "bot.py"]
