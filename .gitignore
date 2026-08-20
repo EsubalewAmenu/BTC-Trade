@@ -1,5 +1,7 @@
-__pycache__
-null
-.idea
-build_and_run.sh
-delete.py
+.env
+.venv/
+data/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.DS_Store

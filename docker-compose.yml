@@ -1,42 +1,17 @@
-version: "3.7"
-
 services:
-  stochrsi-bot:
-    container_name: stochrsi-trading-bot
-    image: my-stoch-trade-image
-    restart: always
+  btc-paper-trader:
+    build: .
+    image: btc-paper-trader:local
+    container_name: btc-paper-trader
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
     volumes:
-      - ./app:/app
-    environment:
-      BINANCE_APIKEY: "QaygxOYnZ4IzOsGYlABTPjqYV3oDHx6JE82qIyf6gXVVxDSf8HALGvYn8A21Xc7p"
-      BINANCE_SECRET_KEY: "20QzAjlOALQXbCPOG8XUIMqGs1LouqNo8SLoftwOM15aHqhWql2ZyoPex6f2pH1m"
-      TELEGRAM_TOKEN: ""
-      TELEGRAM_CHATID: ""
-      TRADE_TIME_FRAME: "1d" # 1m, 5m, 15m, 1h, 6h, etc.
-      TRADE_TIME_FRAME_UPPER_VALIDATOR_VALUE: "1w" # 1m, 5m, 15m, 1h, 6h, etc.
-      TRADE_MARKET: 1
-      TRADE_COIN: "BUSDPERP"
-      TRADE_CRYPTO: "BTC"
-      TRADE_RSI_IFR: 14
-      TRADE_RSI_STOCH: 14
-      TRADE_RSI_K: 3
-      TRADE_RSI_D: 3
-      TRADE_STOCHRSI_CROSS_CANDLE_QTD: 2
-
-      TRADE_EMA_LOW: 2
-      TRADE_EMA_HIGH: 4
-
-      TRADE_EMA_BASE_CANDLE_VALUE: 8
-      TRADE_EMA_BASE_CANDLE_QTD: 2
-
-      TRADE_WMA_CROSS_CANDLE_QTD: 2
-      TRADE_WMA_LOW: 2
-      TRADE_WMA_MIDDLE: 10
-      TRADE_WMA_HIGH: 11
-
-      TRADE_TIME_FRAME_UPPER_VALIDATOR: 0
-      TRADE_EMA_CROSS: 0
-      TRADE_EMA_BASE_CANDLE: 0
-      TRADE_WMA_CROSS: 0
-
-      NOTIFICATION_ONLY: 1
+      - ./data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
