@@ -27,8 +27,10 @@ def settings_rows(config):
         ["Max trades/day", config.max_trades_per_day], ["Max leverage", config.max_leverage],
         ["Stop ATR", config.stop_atr], ["Reward/risk", config.reward_risk],
         ["Taker fee rate", config.taker_fee_rate], ["Slippage bps", config.slippage_bps],
-        ["Max hold minutes", config.max_hold_minutes], ["LLM model", config.openai_model],
+        ["Max hold minutes", config.max_hold_minutes],
         ["Minimum LLM confidence", config.min_llm_confidence],
+        ["LLM model", config.gemini_model if config.use_gemini else config.openai_model],
+        ["LLM provider", "Gemini" if config.use_gemini else "OpenAI"],
     ]
 
 
@@ -45,9 +47,14 @@ def main():
     )
     ledger = ExcelLedger(config.data_dir, config.paper_start_balance, settings_rows(config))
     engine = PaperEngine(config, ledger)
-    decider = LLMDecider(config.openai_api_key, config.openai_model, config.require_llm)
+    decider = LLMDecider(
+        config.openai_api_key, config.openai_model,
+        config.gemini_api_key, config.gemini_model,
+        config.use_gemini, config.require_llm,
+    )
     account = client.account_summary() if config.binance_api_key else {}
     LOG.info("Connected to Binance account (available USDT: %.2f)", account.get("available_balance", 0))
+    LOG.info("LLM provider: %s", decider.provider)
     LOG.warning("PAPER MODE: no Binance order endpoint exists in this application")
 
     while RUNNING:

@@ -55,6 +55,9 @@ class Settings:
     require_binance_account: bool
     openai_api_key: str
     openai_model: str
+    gemini_api_key: str
+    gemini_model: str
+    use_gemini: bool
     require_llm: bool
     request_timeout: int
     data_dir: Path
@@ -111,6 +114,9 @@ class Settings:
             require_binance_account=_bool("REQUIRE_BINANCE_ACCOUNT", True),
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),
+            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
+            use_gemini=_bool("USE_GEMINI", False),
             require_llm=_bool("REQUIRE_LLM", True),
             request_timeout=_int("REQUEST_TIMEOUT", 15, 1),
             data_dir=Path(os.getenv("DATA_DIR", "/app/data")),
@@ -122,5 +128,7 @@ class Settings:
     def validate_secrets(self) -> None:
         if self.require_binance_account and not (self.binance_api_key and self.binance_secret_key):
             raise ValueError("BINANCE_API_KEY and BINANCE_SECRET_KEY are required for account reads")
-        if self.require_llm and not self.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required when REQUIRE_LLM=true")
+        if self.require_llm and self.use_gemini and not self.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY is required when USE_GEMINI=true")
+        if self.require_llm and not self.use_gemini and not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when USE_GEMINI=false")

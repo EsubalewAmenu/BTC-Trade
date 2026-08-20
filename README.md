@@ -1,8 +1,9 @@
 # BTCUSDT Intraday Paper Trader
 
 This application reads BTCUSDT USD-M futures data directly from Binance, optionally reads a
-real Binance futures account through signed **read-only** requests, asks an OpenAI model for a
-structured `LONG`, `SHORT`, or `WAIT` assessment, and simulates market entries and exits.
+real Binance futures account through signed **read-only** requests, asks the selected OpenAI or
+Gemini model for a structured `LONG`, `SHORT`, or `WAIT` assessment, and simulates market entries
+and exits.
 
 It contains no Binance order-placement endpoint. Every position is paper-only.
 
@@ -23,14 +24,15 @@ It contains no Binance order-placement endpoint. Every position is paper-only.
 Create a new Binance API key for account reads. Disable withdrawals and trading, and restrict it
 to your server's IP where possible. Never paste keys into source files or commit `.env`.
 
-The OpenAI implementation uses the Responses API with a strict JSON schema. Market data—not API
-credentials—is sent to the model.
+Both OpenAI and Gemini use strict structured JSON output. Market data—not API credentials—is sent
+to the selected model. Set `USE_GEMINI=true` for Gemini or `USE_GEMINI=false` for OpenAI. The bot
+does not automatically fall back to the other provider: provider errors safely produce `WAIT`.
 
 ## Start
 
 ```bash
 cp .env.example .env
-# Edit .env and add the two Binance values and OPENAI_API_KEY.
+# Edit .env and add the Binance, OpenAI, and Gemini keys. Select USE_GEMINI.
 docker compose up --build
 ```
 
