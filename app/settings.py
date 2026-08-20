@@ -23,6 +23,7 @@ def _bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
+    strategy_mode: str
     symbol: str
     interval: str
     trend_interval: str
@@ -71,8 +72,8 @@ class Settings:
         slow = _int("EMA_SLOW", 50, 3)
         if fast >= slow:
             raise ValueError("EMA_FAST must be smaller than EMA_SLOW")
-        oversold = _float("STOCH_OVERSOLD", 20, 0, 100)
-        overbought = _float("STOCH_OVERBOUGHT", 80, 0, 100)
+        oversold = _float("STOCH_OVERSOLD", 35, 0, 100)
+        overbought = _float("STOCH_OVERBOUGHT", 65, 0, 100)
         if oversold >= overbought:
             raise ValueError("STOCH_OVERSOLD must be below STOCH_OVERBOUGHT")
         level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -81,10 +82,14 @@ class Settings:
         symbol = os.getenv("TRADE_SYMBOL", "BTCUSDT").upper()
         if symbol != "BTCUSDT":
             raise ValueError("This paper trader intentionally supports BTCUSDT only")
+        strategy_mode = os.getenv("STRATEGY_MODE", "scalp").strip().lower()
+        if strategy_mode not in {"scalp", "intraday"}:
+            raise ValueError("STRATEGY_MODE must be scalp or intraday")
         return cls(
+            strategy_mode=strategy_mode,
             symbol=symbol,
-            interval=os.getenv("TRADE_INTERVAL", "15m"),
-            trend_interval=os.getenv("TREND_INTERVAL", "1h"),
+            interval=os.getenv("TRADE_INTERVAL", "5m"),
+            trend_interval=os.getenv("TREND_INTERVAL", "15m"),
             candle_limit=_int("CANDLE_LIMIT", 250, 100),
             poll_seconds=_int("POLL_SECONDS", 15, 5),
             rsi_period=_int("RSI_PERIOD", 14, 2),

@@ -14,7 +14,8 @@ from strategy import Signal, analyze, rsi
 
 def config():
     return SimpleNamespace(
-        symbol="BTCUSDT", interval="15m", ema_fast=2, ema_slow=3,
+        strategy_mode="scalp", symbol="BTCUSDT", interval="5m", trend_interval="15m",
+        ema_fast=2, ema_slow=3,
         rsi_period=2, stoch_period=2, smooth_k=1, smooth_d=1,
         oversold=20, overbought=80, atr_period=2,
     )

@@ -28,7 +28,7 @@ def config(path):
 
 
 def analysis():
-    return SimpleNamespace(candle_time="2026-01-01T00:15:00+00:00", trend_1h="UP", atr=100.0)
+    return SimpleNamespace(candle_time="2026-01-01T00:15:00+00:00", trend_filter="UP", atr=100.0)
 
 
 class PaperEngineTests(unittest.TestCase):

@@ -21,7 +21,8 @@ def stop(_signum, _frame):
 
 def settings_rows(config):
     return [
-        ["Symbol", config.symbol], ["Execution timeframe", config.interval],
+        ["Strategy mode", config.strategy_mode], ["Symbol", config.symbol],
+        ["Execution timeframe", config.interval],
         ["Trend timeframe", config.trend_interval], ["Paper start balance", config.paper_start_balance],
         ["Risk per trade", config.risk_per_trade], ["Max daily loss", config.max_daily_loss],
         ["Max trades/day", config.max_trades_per_day], ["Max leverage", config.max_leverage],
@@ -55,6 +56,11 @@ def main():
     account = client.account_summary() if config.binance_api_key else {}
     LOG.info("Connected to Binance account (available USDT: %.2f)", account.get("available_balance", 0))
     LOG.info("LLM provider: %s", decider.provider)
+    LOG.info(
+        "Strategy profile: %s (%s entries, %s trend, StochRSI %.0f/%.0f)",
+        config.strategy_mode, config.interval, config.trend_interval,
+        config.oversold, config.overbought,
+    )
     try:
         verification = decider.verify_connection()
         LOG.info("LLM startup check passed: %s", verification.rationale)

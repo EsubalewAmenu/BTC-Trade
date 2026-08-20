@@ -9,13 +9,13 @@ It contains no Binance order-placement endpoint. Every position is paper-only.
 
 ## Trading lifecycle
 
-1. Evaluate only closed 15-minute candles with a 1-hour trend filter.
+1. Evaluate only closed 5-minute candles with a 15-minute trend filter (temporary scalp profile).
 2. Calculate StochRSI, RSI, EMA 20/50, ATR, and relative volume.
 3. Request a strict structured LLM decision.
 4. Apply deterministic gates: confidence, trend direction, daily loss, trade count, cooldown,
    one position at a time, and maximum 3x notional exposure.
 5. Simulate a market fill with configurable slippage and taker fees.
-6. Exit at ATR stop, 1.8R target, or four-hour timeout.
+6. Exit at ATR stop, 1.5R target, or one-hour timeout.
 7. Save canonical position state to `data/state.json` and the audit ledger to
    `data/paper_trading.xlsx`.
 

@@ -51,12 +51,15 @@ class LLMDecider:
 
     def _prompt(self, analysis):
         return {
-            "task": "Assess one BTCUSDT intraday paper-trade setup on a 15-minute execution timeframe.",
+            "task": (
+                f"Assess one BTCUSDT {analysis.strategy_mode} paper-trade setup on the "
+                f"{analysis.interval} execution timeframe with a {analysis.trend_interval} trend filter."
+            ),
             "constraints": [
                 "Prefer WAIT when evidence conflicts or is weak.",
                 "Do not invent news, prices, indicators, or account facts.",
-                "A LONG must not conflict with a DOWN 1h trend.",
-                "A SHORT must not conflict with an UP 1h trend.",
+                "A LONG must not conflict with the DOWN higher-timeframe trend.",
+                "A SHORT must not conflict with the UP higher-timeframe trend.",
                 "This is a paper decision; deterministic code controls position sizing and exits.",
             ],
             "market": analysis.to_dict(),

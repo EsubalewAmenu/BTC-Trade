@@ -72,10 +72,10 @@ class PaperEngine:
             return False, "decision is WAIT"
         if decision.confidence < self.config.min_llm_confidence:
             return False, "LLM confidence below threshold"
-        if decision.action == "LONG" and analysis.trend_1h == "DOWN":
-            return False, "long blocked by 1h downtrend"
-        if decision.action == "SHORT" and analysis.trend_1h == "UP":
-            return False, "short blocked by 1h uptrend"
+        if decision.action == "LONG" and analysis.trend_filter == "DOWN":
+            return False, "long blocked by higher-timeframe downtrend"
+        if decision.action == "SHORT" and analysis.trend_filter == "UP":
+            return False, "short blocked by higher-timeframe uptrend"
         if self.state["last_exit_at"]:
             last = datetime.fromisoformat(self.state["last_exit_at"])
             if (now - last).total_seconds() < self.config.cooldown_minutes * 60:

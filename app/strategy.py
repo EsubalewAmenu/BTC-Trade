@@ -13,8 +13,10 @@ class Signal(str, Enum):
 
 @dataclass(frozen=True)
 class MarketAnalysis:
+    strategy_mode: str
     symbol: str
     interval: str
+    trend_interval: str
     candle_time: str
     close: float
     rsi: float
@@ -26,7 +28,7 @@ class MarketAnalysis:
     atr_percent: float
     volume_ratio: float
     trend: str
-    trend_1h: str
+    trend_filter: str
     rule_signal: str
     rule_reason: str
 
@@ -96,13 +98,13 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
         raise ValueError("Indicators are not ready")
 
     trend = _trend(frame, config.ema_fast, config.ema_slow)
-    trend_1h = _trend(trend_candles, config.ema_fast, config.ema_slow)
+    trend_filter = _trend(trend_candles, config.ema_fast, config.ema_slow)
     bullish_cross = previous.k <= previous.d and current.k > current.d
     bearish_cross = previous.k >= previous.d and current.k < current.d
-    if bullish_cross and previous.k <= config.oversold and trend == trend_1h == "UP":
-        rule_signal, reason = Signal.LONG.value, "oversold cross aligned with 15m and 1h uptrends"
-    elif bearish_cross and previous.k >= config.overbought and trend == trend_1h == "DOWN":
-        rule_signal, reason = Signal.SHORT.value, "overbought cross aligned with 15m and 1h downtrends"
+    if bullish_cross and previous.k <= config.oversold and trend == trend_filter == "UP":
+        rule_signal, reason = Signal.LONG.value, "oversold cross aligned with execution and filter uptrends"
+    elif bearish_cross and previous.k >= config.overbought and trend == trend_filter == "DOWN":
+        rule_signal, reason = Signal.SHORT.value, "overbought cross aligned with execution and filter downtrends"
     else:
         rule_signal = Signal.WAIT.value
         reason = (
@@ -110,12 +112,14 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
             f"bullish_cross={bullish_cross}, bearish_cross={bearish_cross}, "
             f"previous_k={previous.k:.2f}, current_k={current.k:.2f}, current_d={current.d:.2f}, "
             f"oversold={config.oversold:.2f}, overbought={config.overbought:.2f}, "
-            f"trend_15m={trend}, trend_1h={trend_1h}"
+            f"trend_{config.interval}={trend}, trend_{config.trend_interval}={trend_filter}"
         )
 
     return MarketAnalysis(
+        strategy_mode=config.strategy_mode,
         symbol=config.symbol,
         interval=config.interval,
+        trend_interval=config.trend_interval,
         candle_time=current.close_time.isoformat(),
         close=round(float(current.close), 8),
         rsi=round(float(current.rsi), 4),
@@ -127,7 +131,7 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
         atr_percent=round(float(current.atr / current.close), 6),
         volume_ratio=round(float(current.volume / current.volume_average), 4),
         trend=trend,
-        trend_1h=trend_1h,
+        trend_filter=trend_filter,
         rule_signal=rule_signal,
         rule_reason=reason,
     )
