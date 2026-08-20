@@ -27,6 +27,8 @@ to your server's IP where possible. Never paste keys into source files or commit
 Both OpenAI and Gemini use strict structured JSON output. Market data—not API credentials—is sent
 to the selected model. Set `USE_GEMINI=true` for Gemini or `USE_GEMINI=false` for OpenAI. The bot
 does not automatically fall back to the other provider: provider errors safely produce `WAIT`.
+At startup it makes one small structured request to verify the selected key, model, and API path;
+after that, it calls the model only when the deterministic strategy finds a candidate setup.
 
 ## Start
 

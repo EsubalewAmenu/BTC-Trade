@@ -93,6 +93,21 @@ class LLMDecider:
         )
         return json.loads(interaction.output_text)
 
+    def verify_connection(self) -> Decision:
+        """Make one real structured request to verify the selected provider at startup."""
+        prompt = {
+            "task": "Verify the BTCUSDT paper trader's structured-output connection.",
+            "instructions": "Return action WAIT, confidence 1, and a short connectivity confirmation.",
+            "market_data": "No market decision is requested.",
+        }
+        result = self._gemini_decision(prompt) if self.use_gemini else self._openai_decision(prompt)
+        action = result["action"]
+        confidence = float(result["confidence"])
+        rationale = result["rationale"]
+        if action != "WAIT" or not 0 <= confidence <= 1 or not isinstance(rationale, str):
+            raise ValueError("Provider returned an invalid verification response")
+        return Decision(action, confidence, f"[{self.provider}] {rationale}")
+
     def decide(self, analysis) -> Decision:
         selected_client = self.gemini_client if self.use_gemini else self.openai_client
         if not selected_client:

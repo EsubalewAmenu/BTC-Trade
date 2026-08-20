@@ -55,6 +55,11 @@ def main():
     account = client.account_summary() if config.binance_api_key else {}
     LOG.info("Connected to Binance account (available USDT: %.2f)", account.get("available_balance", 0))
     LOG.info("LLM provider: %s", decider.provider)
+    try:
+        verification = decider.verify_connection()
+        LOG.info("LLM startup check passed: %s", verification.rationale)
+    except Exception as exc:
+        LOG.exception("LLM startup check failed for %s: %s", decider.provider, type(exc).__name__)
     LOG.warning("PAPER MODE: no Binance order endpoint exists in this application")
 
     while RUNNING:
@@ -73,7 +78,7 @@ def main():
                     account = client.account_summary() if config.binance_api_key else {}
                     if analysis.rule_signal == Signal.WAIT.value:
                         from llm_decider import Decision
-                        decision = Decision("WAIT", 1, "No deterministic setup; LLM not called")
+                        decision = Decision("WAIT", 0, f"[rules] {analysis.rule_reason}; LLM not called")
                     else:
                         decision = decider.decide(analysis)
                     allowed, reason = engine.can_open(decision, analysis)

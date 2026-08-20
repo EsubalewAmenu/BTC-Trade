@@ -104,7 +104,14 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
     elif bearish_cross and previous.k >= config.overbought and trend == trend_1h == "DOWN":
         rule_signal, reason = Signal.SHORT.value, "overbought cross aligned with 15m and 1h downtrends"
     else:
-        rule_signal, reason = Signal.WAIT.value, "no closed-candle trend-aligned StochRSI setup"
+        rule_signal = Signal.WAIT.value
+        reason = (
+            "no setup: "
+            f"bullish_cross={bullish_cross}, bearish_cross={bearish_cross}, "
+            f"previous_k={previous.k:.2f}, current_k={current.k:.2f}, current_d={current.d:.2f}, "
+            f"oversold={config.oversold:.2f}, overbought={config.overbought:.2f}, "
+            f"trend_15m={trend}, trend_1h={trend_1h}"
+        )
 
     return MarketAnalysis(
         symbol=config.symbol,
