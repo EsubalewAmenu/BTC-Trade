@@ -25,6 +25,7 @@ def config(path):
         data_dir=Path(path), paper_start_balance=500, max_trades_per_day=4,
         max_daily_loss=.02, cooldown_minutes=0, slippage_bps=0, stop_atr=1,
         risk_per_trade=.005, max_leverage=3, reward_risk=2,
+        minimum_net_reward_risk=.1,
         taker_fee_rate=.0005, max_hold_minutes=240,
     )
 
@@ -94,6 +95,30 @@ class PaperEngineTests(unittest.TestCase):
             )
             self.assertIsNone(position)
             self.assertIsNone(engine.position)
+
+    def test_target_preserves_minimum_net_reward_after_fees(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = config(directory)
+            cfg.minimum_net_reward_risk = 1.1
+            engine = PaperEngine(cfg, Ledger())
+            position = engine.open(
+                Decision("LONG", "stop too tight after fees"),
+                structure_analysis(99_950), 100_000,
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+            self.assertIsNotNone(position)
+            result = engine._close_at(
+                position.target_price, "TARGET",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+            adverse = cfg.slippage_bps / 10_000
+            stop_fill = position.stop_price * (1 - adverse)
+            planned_loss = position.quantity * (
+                position.entry_price - stop_fill
+                + position.entry_price * cfg.taker_fee_rate
+                + stop_fill * cfg.taker_fee_rate
+            )
+            self.assertGreaterEqual(result["net_pnl"] / planned_loss, 1.1 - 1e-9)
 
 
 if __name__ == "__main__":

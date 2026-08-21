@@ -106,14 +106,21 @@ class PaperEngine:
         stop_fill = technical_stop * (1 - adverse if decision.action == "LONG" else 1 + adverse)
         execution_loss = entry - stop_fill if decision.action == "LONG" else stop_fill - entry
         loss_per_unit = execution_loss + entry * self.config.taker_fee_rate + stop_fill * self.config.taker_fee_rate
+        desired_net_reward = loss_per_unit * self.config.minimum_net_reward_risk
+        fee = self.config.taker_fee_rate
+        if decision.action == "LONG":
+            gross_target = entry + stop_distance * self.config.reward_risk
+            required_fill = (entry * (1 + fee) + desired_net_reward) / (1 - fee)
+            target = max(gross_target, required_fill / (1 - adverse))
+        else:
+            gross_target = entry - stop_distance * self.config.reward_risk
+            required_fill = (entry * (1 - fee) - desired_net_reward) / (1 + fee)
+            target = min(gross_target, required_fill / (1 + adverse))
         quantity = risk_amount / loss_per_unit
         max_notional = self.state["balance"] * self.config.max_leverage
         quantity = min(quantity, max_notional / entry)
         notional = quantity * entry
-        if decision.action == "LONG":
-            stop, target = technical_stop, entry + stop_distance * self.config.reward_risk
-        else:
-            stop, target = technical_stop, entry - stop_distance * self.config.reward_risk
+        stop = technical_stop
         position = Position(
             trade_id=uuid.uuid4().hex[:12],
             side=decision.action,
@@ -143,7 +150,7 @@ class PaperEngine:
             reason = "TARGET" if market_price >= position.target_price else "STOP" if market_price <= position.stop_price else None
         else:
             reason = "TARGET" if market_price <= position.target_price else "STOP" if market_price >= position.stop_price else None
-        if not reason and age_minutes >= self.config.max_hold_minutes:
+        if not reason and age_minutes + 0.001 >= self.config.max_hold_minutes:
             reason = "TIMEOUT"
         if not reason:
             return None
@@ -184,7 +191,7 @@ class PaperEngine:
         if target_hit:
             return self._close_at(position.target_price, "TARGET", now)
         age_minutes = (now - datetime.fromisoformat(position.opened_at)).total_seconds() / 60
-        if age_minutes >= self.config.max_hold_minutes:
+        if age_minutes + 0.001 >= self.config.max_hold_minutes:
             return self._close_at(float(candle.close), "TIMEOUT", now)
         return None
 

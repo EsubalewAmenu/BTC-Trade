@@ -16,8 +16,8 @@ The default scalp profile uses 5-minute entries and a 15-minute trend filter.
 5. A long requires a bullish candle breaking recent pullback highs and closing above EMA 20. A
    short uses the inverse condition.
 6. The stop sits beyond the pullback swing with an ATR buffer. Position size includes expected stop
-   slippage and both taker fees so configured risk is the total planned loss. Exits use a fixed R
-   target and maximum holding time.
+   slippage and both taker fees so configured risk is the total planned loss. The target is adjusted
+   when necessary to preserve minimum reward/risk after costs. A maximum holding time completes exits.
 
 Every condition is computed from closed candles. The replay makes a decision after one candle
 closes and, if valid, fills at the next candle's open. The entry candle is included in exit
@@ -87,7 +87,7 @@ BREAKOUT_LOOKBACK / IMPULSE_ATR
 PULLBACK_MIN_BARS / PULLBACK_MAX_BARS
 PULLBACK_TOUCH_ATR / PULLBACK_MAX_RETRACE
 CONFIRMATION_LOOKBACK / STOP_BUFFER_ATR
-REWARD_RISK / MAX_HOLD_MINUTES
+REWARD_RISK / MINIMUM_NET_REWARD_RISK / MAX_HOLD_MINUTES
 TAKER_FEE_RATE / SLIPPAGE_BPS
 ```
 

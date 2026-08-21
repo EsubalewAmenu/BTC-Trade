@@ -43,6 +43,7 @@ class Settings:
     stop_atr: float
     stop_buffer_atr: float
     reward_risk: float
+    minimum_net_reward_risk: float
     risk_per_trade: float
     max_daily_loss: float
     max_trades_per_day: int
@@ -99,6 +100,7 @@ class Settings:
             stop_atr=_float("STOP_ATR", 1.0, 0.2, 10),
             stop_buffer_atr=_float("STOP_BUFFER_ATR", 0.15, 0, 2),
             reward_risk=_float("REWARD_RISK", 1.5, 1, 10),
+            minimum_net_reward_risk=_float("MINIMUM_NET_REWARD_RISK", 1.1, 0.5, 10),
             risk_per_trade=_float("RISK_PER_TRADE", 0.005, 0.0001, 0.02),
             max_daily_loss=_float("MAX_DAILY_LOSS", 0.02, 0.001, 0.10),
             max_trades_per_day=_int("MAX_TRADES_PER_DAY", 12, 1),

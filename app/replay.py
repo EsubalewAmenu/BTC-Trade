@@ -66,8 +66,19 @@ def pandas_interval(value: str) -> str:
 
 
 def run_replay(input_path: Path, output_dir: Path, config: Settings):
-    candles = load_candles(input_path)
-    trend_all = resample_closed(candles, pandas_interval(config.trend_interval))
+    source = load_candles(input_path)
+    source_step = source.open_time.diff().dropna().median()
+    execution_step = pd.Timedelta(pandas_interval(config.interval))
+    if execution_step < source_step or execution_step % source_step != pd.Timedelta(0):
+        raise ValueError("TRADE_INTERVAL must be an exact multiple of the source candle interval")
+    candles = (
+        source if execution_step == source_step
+        else resample_closed(source, pandas_interval(config.interval))
+    )
+    trend_step = pd.Timedelta(pandas_interval(config.trend_interval))
+    if trend_step < execution_step or trend_step % execution_step != pd.Timedelta(0):
+        raise ValueError("TREND_INTERVAL must be an exact multiple of TRADE_INTERVAL")
+    trend_all = resample_closed(source, pandas_interval(config.trend_interval))
     ledger = CsvLedger(output_dir, reset=True)
     replay_config = type(config)(**{**config.__dict__, "data_dir": output_dir})
     state_path = output_dir / "state.json"
