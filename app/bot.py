@@ -62,8 +62,11 @@ def main():
                     LOG.info("%s: %s (%s)", decision.action, decision.rationale, reason)
                     if allowed and decision.action in {Signal.LONG.value, Signal.SHORT.value}:
                         position = engine.open(decision, analysis, price)
-                        LOG.info("Opened paper position: %s", position)
-                        client.send_telegram(str(position), config.telegram_token, config.telegram_chat_id)
+                        if position:
+                            LOG.info("Opened paper position: %s", position)
+                            client.send_telegram(str(position), config.telegram_token, config.telegram_chat_id)
+                        else:
+                            LOG.info("Skipped signal because next price had crossed invalidation")
             heartbeat.touch()
             consecutive_errors = 0
         except Exception:

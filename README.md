@@ -10,16 +10,19 @@ The default scalp profile uses 5-minute entries and a 15-minute trend filter.
 
 1. Both timeframes must agree: close above/below EMA 20 and EMA 20 above/below EMA 50.
 2. Both EMAs must slope in the same direction over the last three bars.
-3. A prior impulse must extend at least `IMPULSE_ATR` beyond EMA 20.
-4. The next 2-6 candles must retrace to the EMA 20 zone without closing through EMA 50.
-5. A long requires a bullish candle closing above the previous high and EMA 20. A short uses the
-   inverse condition.
-6. Risk is sized from ATR, limited by account risk and maximum notional exposure. Exits use an ATR
-   stop, fixed R target, maximum holding time, fees, and adverse slippage.
+3. An impulse must close beyond recent swing structure and extend at least `IMPULSE_ATR` from EMA 20.
+4. The next 2-6 candles must form a controlled retracement to the EMA/breakout zone without closing
+   back through the broken level or EMA 50.
+5. A long requires a bullish candle breaking recent pullback highs and closing above EMA 20. A
+   short uses the inverse condition.
+6. The stop sits beyond the pullback swing with an ATR buffer. Position size includes expected stop
+   slippage and both taker fees so configured risk is the total planned loss. Exits use a fixed R
+   target and maximum holding time.
 
 Every condition is computed from closed candles. The replay makes a decision after one candle
-closes and, if valid, fills at the next candle's open. If a historical candle touches both stop
-and target, the replay records STOP first because tick order is unknown.
+closes and, if valid, fills at the next candle's open. The entry candle is included in exit
+evaluation. If a historical candle touches both stop and target, the replay records STOP first
+because tick order is unknown.
 
 ## Live paper mode
 
@@ -80,10 +83,11 @@ period and validate them unchanged on later unseen periods.
 ```text
 EMA_FAST / EMA_SLOW
 TREND_SLOPE_BARS
-IMPULSE_LOOKBACK / IMPULSE_ATR
+BREAKOUT_LOOKBACK / IMPULSE_ATR
 PULLBACK_MIN_BARS / PULLBACK_MAX_BARS
-PULLBACK_TOUCH_ATR
-STOP_ATR / REWARD_RISK / MAX_HOLD_MINUTES
+PULLBACK_TOUCH_ATR / PULLBACK_MAX_RETRACE
+CONFIRMATION_LOOKBACK / STOP_BUFFER_ATR
+REWARD_RISK / MAX_HOLD_MINUTES
 TAKER_FEE_RATE / SLIPPAGE_BPS
 ```
 

@@ -33,12 +33,15 @@ class Settings:
     ema_slow: int
     atr_period: int
     trend_slope_bars: int
-    impulse_lookback: int
+    breakout_lookback: int
     impulse_atr: float
     pullback_min_bars: int
     pullback_max_bars: int
     pullback_touch_atr: float
+    pullback_max_retrace: float
+    confirmation_lookback: int
     stop_atr: float
+    stop_buffer_atr: float
     reward_risk: float
     risk_per_trade: float
     max_daily_loss: float
@@ -86,12 +89,15 @@ class Settings:
             ema_slow=slow,
             atr_period=_int("ATR_PERIOD", 14, 2),
             trend_slope_bars=_int("TREND_SLOPE_BARS", 3, 1),
-            impulse_lookback=_int("IMPULSE_LOOKBACK", 8, 2),
+            breakout_lookback=_int("BREAKOUT_LOOKBACK", 10, 2),
             impulse_atr=_float("IMPULSE_ATR", 1.0, 0.1, 5),
             pullback_min_bars=minimum,
             pullback_max_bars=maximum,
             pullback_touch_atr=_float("PULLBACK_TOUCH_ATR", 0.25, 0, 2),
+            pullback_max_retrace=_float("PULLBACK_MAX_RETRACE", 0.8, 0.2, 2),
+            confirmation_lookback=_int("CONFIRMATION_LOOKBACK", 2, 1),
             stop_atr=_float("STOP_ATR", 1.0, 0.2, 10),
+            stop_buffer_atr=_float("STOP_BUFFER_ATR", 0.15, 0, 2),
             reward_risk=_float("REWARD_RISK", 1.5, 1, 10),
             risk_per_trade=_float("RISK_PER_TRADE", 0.005, 0.0001, 0.02),
             max_daily_loss=_float("MAX_DAILY_LOSS", 0.02, 0.001, 0.10),

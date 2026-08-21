@@ -74,16 +74,19 @@ def run_replay(input_path: Path, output_dir: Path, config: Settings):
     state_path.unlink(missing_ok=True)
     engine = PaperEngine(replay_config, ledger)
     pending = None
-    warmup = config.ema_slow + config.impulse_lookback + config.pullback_max_bars + 2
+    warmup = max(
+        config.ema_slow + config.trend_slope_bars,
+        config.breakout_lookback + config.pullback_max_bars + 2,
+    )
 
     for index, candle in candles.iterrows():
         now = candle.close_time.to_pydatetime()
-        if engine.position:
-            engine.check_exit_candle(candle, now)
         if pending and not engine.position:
             decision, analysis = pending
             engine.open(decision, analysis, float(candle.open), candle.open_time.to_pydatetime())
             pending = None
+        if engine.position:
+            engine.check_exit_candle(candle, now)
         visible = candles.iloc[max(0, index + 1 - config.candle_limit) : index + 1]
         if len(visible) < warmup:
             continue

@@ -57,7 +57,11 @@ class PaperEngine:
 
     def _daily(self, now):
         key = now.date().isoformat()
-        return self.state["daily"].setdefault(key, {"pnl": 0.0, "trades": 0})
+        daily = self.state["daily"].setdefault(
+            key, {"pnl": 0.0, "trades": 0, "start_balance": self.state["balance"]}
+        )
+        daily.setdefault("start_balance", self.state["balance"] - daily.get("pnl", 0.0))
+        return daily
 
     def can_open(self, decision, analysis, now=None):
         now = now or utc_now()
@@ -68,7 +72,7 @@ class PaperEngine:
         daily = self._daily(now)
         if daily["trades"] >= self.config.max_trades_per_day:
             return False, "daily trade limit reached"
-        if daily["pnl"] <= -(self.config.paper_start_balance * self.config.max_daily_loss):
+        if daily["pnl"] <= -(daily["start_balance"] * self.config.max_daily_loss):
             return False, "daily loss limit reached"
         if decision.action not in {"LONG", "SHORT"}:
             return False, "decision is WAIT"
@@ -91,16 +95,25 @@ class PaperEngine:
         now = now or utc_now()
         adverse = self.config.slippage_bps / 10_000
         entry = market_price * (1 + adverse if decision.action == "LONG" else 1 - adverse)
-        stop_distance = analysis.atr * self.config.stop_atr
+        technical_stop = getattr(analysis, "invalidation_price", None)
+        if technical_stop is None:
+            stop_distance = analysis.atr * self.config.stop_atr
+            technical_stop = entry - stop_distance if decision.action == "LONG" else entry + stop_distance
+        stop_distance = entry - technical_stop if decision.action == "LONG" else technical_stop - entry
+        if stop_distance <= 0:
+            return None
         risk_amount = self.state["balance"] * self.config.risk_per_trade
-        quantity = risk_amount / stop_distance
+        stop_fill = technical_stop * (1 - adverse if decision.action == "LONG" else 1 + adverse)
+        execution_loss = entry - stop_fill if decision.action == "LONG" else stop_fill - entry
+        loss_per_unit = execution_loss + entry * self.config.taker_fee_rate + stop_fill * self.config.taker_fee_rate
+        quantity = risk_amount / loss_per_unit
         max_notional = self.state["balance"] * self.config.max_leverage
         quantity = min(quantity, max_notional / entry)
         notional = quantity * entry
         if decision.action == "LONG":
-            stop, target = entry - stop_distance, entry + stop_distance * self.config.reward_risk
+            stop, target = technical_stop, entry + stop_distance * self.config.reward_risk
         else:
-            stop, target = entry + stop_distance, entry - stop_distance * self.config.reward_risk
+            stop, target = technical_stop, entry - stop_distance * self.config.reward_risk
         position = Position(
             trade_id=uuid.uuid4().hex[:12],
             side=decision.action,

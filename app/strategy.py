@@ -31,6 +31,9 @@ class MarketAnalysis:
     impulse_found: bool
     pullback_found: bool
     confirmation_found: bool
+    pullback_bars: int
+    breakout_level: float | None
+    invalidation_price: float | None
     rule_signal: str
     rule_reason: str
 
@@ -82,7 +85,10 @@ def classify_trend(frame: pd.DataFrame, config) -> str:
 
 
 def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> MarketAnalysis:
-    required = config.ema_slow + config.impulse_lookback + config.pullback_max_bars + 2
+    required = max(
+        config.ema_slow + config.trend_slope_bars,
+        config.breakout_lookback + config.pullback_max_bars + 2,
+    )
     if len(candles) < required or len(trend_candles) < config.ema_slow + config.trend_slope_bars:
         raise ValueError("Not enough closed candles for pullback analysis")
 
@@ -93,47 +99,90 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
 
     trend = classify_trend(candles, config)
     trend_filter = classify_trend(trend_candles, config)
-    pullback = frame.iloc[-1 - config.pullback_max_bars : -1]
-    impulse = frame.iloc[
-        -1 - config.pullback_max_bars - config.impulse_lookback : -1 - config.pullback_max_bars
-    ]
-    recent = pullback.iloc[-config.pullback_min_bars :]
     tolerance = config.pullback_touch_atr * current.atr
-
-    long_impulse = bool(
-        ((impulse.high - impulse.ema_fast) >= config.impulse_atr * impulse.atr).any()
-    )
-    short_impulse = bool(
-        ((impulse.ema_fast - impulse.low) >= config.impulse_atr * impulse.atr).any()
-    )
-    long_pullback = bool(
-        (recent.close < recent.open).any()
-        and (pullback.low <= pullback.ema_fast + tolerance).any()
-        and (pullback.close > pullback.ema_slow).all()
-    )
-    short_pullback = bool(
-        (recent.close > recent.open).any()
-        and (pullback.high >= pullback.ema_fast - tolerance).any()
-        and (pullback.close < pullback.ema_slow).all()
-    )
+    confirmation_window = frame.iloc[-1 - config.confirmation_lookback : -1]
     long_confirmation = bool(
         current.close > current.open
-        and current.close > frame.iloc[-2].high
+        and current.close > confirmation_window.high.max()
         and current.close > current.ema_fast
     )
     short_confirmation = bool(
         current.close < current.open
-        and current.close < frame.iloc[-2].low
+        and current.close < confirmation_window.low.min()
         and current.close < current.ema_fast
     )
 
-    if trend == trend_filter == "UP" and long_impulse and long_pullback and long_confirmation:
+    # A candidate impulse must actually break prior structure. The candles between that
+    # breakout and the current confirmation are the pullback, so its length is genuinely
+    # variable rather than always being PULLBACK_MAX_BARS.
+    long_setup = short_setup = None
+    long_impulse = short_impulse = False
+    long_pullback = short_pullback = False
+    end = len(frame) - 1
+    for pullback_bars in range(config.pullback_min_bars, config.pullback_max_bars + 1):
+        impulse_index = end - pullback_bars - 1
+        prior_start = impulse_index - config.breakout_lookback
+        if prior_start < 0:
+            continue
+        impulse = frame.iloc[impulse_index]
+        prior = frame.iloc[prior_start:impulse_index]
+        pullback = frame.iloc[impulse_index + 1:end]
+        impulse_range = float(impulse.high - impulse.low)
+        average_pullback_range = float((pullback.high - pullback.low).mean())
+        controlled = average_pullback_range <= impulse_range * config.pullback_max_retrace
+
+        long_breakout = bool(
+            impulse.close > prior.high.max()
+            and impulse.close > impulse.open
+            and impulse.close - impulse.ema_fast >= config.impulse_atr * impulse.atr
+        )
+        short_breakout = bool(
+            impulse.close < prior.low.min()
+            and impulse.close < impulse.open
+            and impulse.ema_fast - impulse.close >= config.impulse_atr * impulse.atr
+        )
+        long_impulse = long_impulse or long_breakout
+        short_impulse = short_impulse or short_breakout
+        breakout_high = float(prior.high.max())
+        breakout_low = float(prior.low.min())
+        candidate_long_pullback = bool(
+            long_breakout
+            and controlled
+            and (pullback.close < pullback.open).any()
+            and ((pullback.low <= pullback.ema_fast + tolerance).any()
+                 or (pullback.low <= breakout_high + tolerance).any())
+            and (pullback.close >= breakout_high - tolerance).all()
+            and (pullback.close > pullback.ema_slow).all()
+        )
+        candidate_short_pullback = bool(
+            short_breakout
+            and controlled
+            and (pullback.close > pullback.open).any()
+            and ((pullback.high >= pullback.ema_fast - tolerance).any()
+                 or (pullback.high >= breakout_low - tolerance).any())
+            and (pullback.close <= breakout_low + tolerance).all()
+            and (pullback.close < pullback.ema_slow).all()
+        )
+        long_pullback = long_pullback or candidate_long_pullback
+        short_pullback = short_pullback or candidate_short_pullback
+        if candidate_long_pullback and long_confirmation and long_setup is None:
+            long_setup = (pullback_bars, breakout_high, float(pullback.low.min()))
+        if candidate_short_pullback and short_confirmation and short_setup is None:
+            short_setup = (pullback_bars, breakout_low, float(pullback.high.max()))
+
+    pullback_bars = 0
+    breakout_level = invalidation_price = None
+    if trend == trend_filter == "UP" and long_setup:
         signal = Signal.LONG.value
-        reason = "bullish trends, prior impulse, controlled EMA pullback, bullish confirmation"
+        pullback_bars, breakout_level, pullback_low = long_setup
+        invalidation_price = pullback_low - config.stop_buffer_atr * current.atr
+        reason = "bullish trends, breakout impulse, controlled structure retest, bullish confirmation"
         impulse_found, pullback_found, confirmation_found = True, True, True
-    elif trend == trend_filter == "DOWN" and short_impulse and short_pullback and short_confirmation:
+    elif trend == trend_filter == "DOWN" and short_setup:
         signal = Signal.SHORT.value
-        reason = "bearish trends, prior impulse, controlled EMA pullback, bearish confirmation"
+        pullback_bars, breakout_level, pullback_high = short_setup
+        invalidation_price = pullback_high + config.stop_buffer_atr * current.atr
+        reason = "bearish trends, breakout impulse, controlled structure retest, bearish confirmation"
         impulse_found, pullback_found, confirmation_found = True, True, True
     else:
         signal = Signal.WAIT.value
@@ -172,6 +221,9 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
         impulse_found=impulse_found,
         pullback_found=pullback_found,
         confirmation_found=confirmation_found,
+        pullback_bars=pullback_bars,
+        breakout_level=None if breakout_level is None else round(breakout_level, 8),
+        invalidation_price=None if invalidation_price is None else round(invalidation_price, 8),
         rule_signal=signal,
         rule_reason=reason,
     )

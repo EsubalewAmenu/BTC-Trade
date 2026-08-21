@@ -35,6 +35,13 @@ def analysis():
     )
 
 
+def structure_analysis(stop):
+    return SimpleNamespace(
+        candle_time="2026-01-01T00:15:00+00:00", trend_filter="UP",
+        atr=100.0, invalidation_price=stop,
+    )
+
+
 class PaperEngineTests(unittest.TestCase):
     def test_long_target_closes_and_increases_balance(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -63,6 +70,30 @@ class PaperEngineTests(unittest.TestCase):
                 close=position.entry_price, close_time=pd.Timestamp("2026-01-01T00:05:00Z"),
             )
             self.assertEqual(engine.check_exit_candle(candle)["exit_reason"], "STOP")
+
+    def test_structure_stop_sizes_total_loss_to_risk_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = config(directory)
+            cfg.slippage_bps = 2
+            engine = PaperEngine(cfg, Ledger())
+            now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+            position = engine.open(
+                Decision("LONG", "structure pullback"),
+                structure_analysis(99_500), 100_000, now,
+            )
+            result = engine._close_at(position.stop_price, "STOP", now)
+            self.assertAlmostEqual(result["net_pnl"], -2.5, places=8)
+
+    def test_entry_beyond_structure_invalidation_is_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(config(directory), Ledger())
+            position = engine.open(
+                Decision("LONG", "gapped below stop"),
+                structure_analysis(100_100), 100_000,
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+            self.assertIsNone(position)
+            self.assertIsNone(engine.position)
 
 
 if __name__ == "__main__":
