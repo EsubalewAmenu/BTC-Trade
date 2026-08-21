@@ -1,65 +1,92 @@
-# BTCUSDT Intraday Paper Trader
+# BTCUSDT Pullback Paper Trader
 
-This application reads BTCUSDT USD-M futures data directly from Binance, optionally reads a
-real Binance futures account through signed **read-only** requests, asks the selected OpenAI or
-Gemini model for a structured `LONG`, `SHORT`, or `WAIT` assessment, and simulates market entries
-and exits.
+This project implements one strategy only: a deterministic BTCUSDT trend pullback. It contains
+no LLM integration and no exchange order-placement endpoint. It can either watch closed Binance
+USD-M futures candles or replay a stored candle file one candle at a time.
 
-It contains no Binance order-placement endpoint. Every position is paper-only.
+## Strategy definition
 
-## Trading lifecycle
+The default scalp profile uses 5-minute entries and a 15-minute trend filter.
 
-1. Evaluate only closed 5-minute candles with a 15-minute trend filter (temporary scalp profile).
-2. Calculate StochRSI, RSI, EMA 20/50, ATR, and relative volume.
-3. Request a strict structured LLM decision.
-4. Apply deterministic gates: confidence, trend direction, daily loss, trade count, cooldown,
-   one position at a time, and maximum 3x notional exposure.
-5. Simulate a market fill with configurable slippage and taker fees.
-6. Exit at ATR stop, 1.5R target, or one-hour timeout.
-7. Save canonical position state to `data/state.json` and the audit ledger to
-   `data/paper_trading.xlsx`.
+1. Both timeframes must agree: close above/below EMA 20 and EMA 20 above/below EMA 50.
+2. Both EMAs must slope in the same direction over the last three bars.
+3. A prior impulse must extend at least `IMPULSE_ATR` beyond EMA 20.
+4. The next 2-6 candles must retrace to the EMA 20 zone without closing through EMA 50.
+5. A long requires a bullish candle closing above the previous high and EMA 20. A short uses the
+   inverse condition.
+6. Risk is sized from ATR, limited by account risk and maximum notional exposure. Exits use an ATR
+   stop, fixed R target, maximum holding time, fees, and adverse slippage.
 
-## Credentials
+Every condition is computed from closed candles. The replay makes a decision after one candle
+closes and, if valid, fills at the next candle's open. If a historical candle touches both stop
+and target, the replay records STOP first because tick order is unknown.
 
-Create a new Binance API key for account reads. Disable withdrawals and trading, and restrict it
-to your server's IP where possible. Never paste keys into source files or commit `.env`.
-
-Both OpenAI and Gemini use strict structured JSON output. Market data—not API credentials—is sent
-to the selected model. Set `USE_GEMINI=true` for Gemini or `USE_GEMINI=false` for OpenAI. The bot
-does not automatically fall back to the other provider: provider errors safely produce `WAIT`.
-At startup it makes one small structured request to verify the selected key, model, and API path;
-after that, it calls the model only when the deterministic strategy finds a candidate setup.
-
-## Start
+## Live paper mode
 
 ```bash
 cp .env.example .env
-# Edit .env and add the Binance, OpenAI, and Gemini keys. Select USE_GEMINI.
+# API keys are optional unless REQUIRE_BINANCE_ACCOUNT=true.
 docker compose up --build
 ```
 
-Workbook and state files appear under `data/`. Stop with `Ctrl+C`. To reset the simulation,
-stop the container and move the `data` directory to a backup location before restarting.
+Outputs are `data/events.csv`, `data/trades.csv`, and `data/state.json`. Existing state from the
+older version is migrated, but archive the old `data/` directory before comparing a fresh test.
 
-## Continuous hosting
+## Historical candle replay
 
-For the Google Cloud Always Free allowance, use one standard (not Spot) Compute Engine `e2-micro`
-VM in `us-west1`, `us-central1`, or `us-east1`, with at most 30 GB of standard persistent disk.
-Keep `data/` on that persistent boot disk, enable VM automatic restart, and start the bot with
-Docker Compose. Protect the VM's `.env` with file mode `600`; never store it in Git.
+Download a Binance BTCUSDT USD-M futures kline ZIP from:
 
-The container writes a heartbeat, retries transient Binance HTTP failures, and exits after
-`MAX_CONSECUTIVE_ERRORS` failed cycles so Docker can restart it. It also has a Docker health check,
-a 768 MB memory limit, a one-CPU limit, and rotating JSON logs. These measures improve recovery,
-but no single free VM can guarantee literally uninterrupted service during every zone or provider
-outage.
+- https://data.binance.vision/?prefix=data/futures/um/monthly/klines/BTCUSDT/5m/
 
-## Interpretation
+Or download and extract one official monthly file directly through the container:
 
-The workbook's Dashboard summarizes balance, closed trades, wins, win rate, net PnL, and profit
-factor. The Trades sheet holds the complete position lifecycle; Events records every evaluated
-candle, including WAIT and risk-gate rejections. Results include estimated taker fees and
-slippage but cannot reproduce every real execution condition.
+```bash
+docker compose build
+docker compose run --rm btc-paper-trader \
+  python download_history.py --month 2024-01 --interval 5m
+```
 
-Do not enable real-money order execution based only on a profitable small sample. Review at least
-100 paper trades across different market regimes first.
+Unzip the CSV under `data/historical/`, then run:
+
+```bash
+docker compose build
+docker compose run --rm btc-paper-trader \
+  python replay.py \
+  --input /app/data/historical/BTCUSDT-5m-2024-01.csv \
+  --output /app/data/replay-2024-01
+```
+
+Replay results appear in:
+
+```text
+data/replay-2024-01/events.csv
+data/replay-2024-01/trades.csv
+data/replay-2024-01/state.json
+```
+
+`events.csv` contains one WAIT/LONG/SHORT evaluation for each candle after warmup. `trades.csv`
+contains the complete simulated trade lifecycle. Use separate output folders for different test
+months so results cannot mix.
+
+Accepted input is either Binance's headerless 12-column kline CSV or a CSV with
+`open_time,open,high,low,close,volume` columns. Numeric millisecond and microsecond timestamps and
+ISO timestamps are supported.
+
+## Parameters to test
+
+Do not optimize many parameters against the same month. Establish defaults on one development
+period and validate them unchanged on later unseen periods.
+
+```text
+EMA_FAST / EMA_SLOW
+TREND_SLOPE_BARS
+IMPULSE_LOOKBACK / IMPULSE_ATR
+PULLBACK_MIN_BARS / PULLBACK_MAX_BARS
+PULLBACK_TOUCH_ATR
+STOP_ATR / REWARD_RISK / MAX_HOLD_MINUTES
+TAKER_FEE_RATE / SLIPPAGE_BPS
+```
+
+Before considering live execution, inspect chart screenshots for sampled signals and test at least
+100 trades across trending, ranging, high-volatility, and low-volatility periods. A profitable
+backtest does not establish that future trading will be profitable.

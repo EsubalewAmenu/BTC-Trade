@@ -20,7 +20,6 @@ class Position:
     stop_price: float
     target_price: float
     entry_fee: float
-    confidence: float
     rationale: str
     candle_time: str
 
@@ -35,7 +34,10 @@ class PaperEngine:
 
     def _load(self):
         if self.state_path.exists():
-            return json.loads(self.state_path.read_text())
+            state = json.loads(self.state_path.read_text())
+            if state.get("position"):
+                state["position"].pop("confidence", None)
+            return state
         return {
             "balance": self.config.paper_start_balance,
             "position": None,
@@ -70,8 +72,6 @@ class PaperEngine:
             return False, "daily loss limit reached"
         if decision.action not in {"LONG", "SHORT"}:
             return False, "decision is WAIT"
-        if decision.confidence < self.config.min_llm_confidence:
-            return False, "LLM confidence below threshold"
         if decision.action == "LONG" and analysis.trend_filter == "DOWN":
             return False, "long blocked by higher-timeframe downtrend"
         if decision.action == "SHORT" and analysis.trend_filter == "UP":
@@ -82,10 +82,10 @@ class PaperEngine:
                 return False, "cooldown active"
         return True, "risk gates passed"
 
-    def mark_decision(self, analysis, decision, account, result):
+    def mark_decision(self, analysis, decision, account=None, result=""):
         self.state["last_decision_candle"] = analysis.candle_time
         self._save()
-        self.ledger.record_event("DECISION", analysis, decision, account, result)
+        self.ledger.record_event(analysis, result)
 
     def open(self, decision, analysis, market_price, now=None):
         now = now or utc_now()
@@ -111,7 +111,6 @@ class PaperEngine:
             stop_price=stop,
             target_price=target,
             entry_fee=notional * self.config.taker_fee_rate,
-            confidence=decision.confidence,
             rationale=decision.rationale,
             candle_time=analysis.candle_time,
         )
@@ -151,6 +150,49 @@ class PaperEngine:
             "closed_at": now.isoformat(), "exit_price": exit_price, "exit_reason": reason,
             "gross_pnl": gross, "exit_fee": exit_fee, "net_pnl": net,
             "balance": self.state["balance"], "hold_minutes": age_minutes,
+        }
+        self.ledger.close_trade(position.trade_id, result)
+        return result
+
+    def check_exit_candle(self, candle, now=None):
+        """Evaluate one complete candle. If both levels touch, assume STOP first."""
+        position = self.position
+        if not position:
+            return None
+        now = now or candle.close_time.to_pydatetime()
+        if position.side == "LONG":
+            stop_hit = float(candle.low) <= position.stop_price
+            target_hit = float(candle.high) >= position.target_price
+        else:
+            stop_hit = float(candle.high) >= position.stop_price
+            target_hit = float(candle.low) <= position.target_price
+        if stop_hit:
+            return self._close_at(position.stop_price, "STOP", now)
+        if target_hit:
+            return self._close_at(position.target_price, "TARGET", now)
+        age_minutes = (now - datetime.fromisoformat(position.opened_at)).total_seconds() / 60
+        if age_minutes >= self.config.max_hold_minutes:
+            return self._close_at(float(candle.close), "TIMEOUT", now)
+        return None
+
+    def _close_at(self, market_price, reason, now):
+        position = self.position
+        adverse = self.config.slippage_bps / 10_000
+        exit_price = market_price * (1 - adverse if position.side == "LONG" else 1 + adverse)
+        direction = 1 if position.side == "LONG" else -1
+        gross = (exit_price - position.entry_price) * position.quantity * direction
+        exit_fee = exit_price * position.quantity * self.config.taker_fee_rate
+        net = gross - position.entry_fee - exit_fee
+        self.state["balance"] += net
+        self._daily(now)["pnl"] += net
+        self.state["position"] = None
+        self.state["last_exit_at"] = now.isoformat()
+        self._save()
+        result = {
+            "closed_at": now.isoformat(), "exit_price": exit_price, "exit_reason": reason,
+            "gross_pnl": gross, "exit_fee": exit_fee, "net_pnl": net,
+            "balance": self.state["balance"],
+            "hold_minutes": (now - datetime.fromisoformat(position.opened_at)).total_seconds() / 60,
         }
         self.ledger.close_trade(position.trade_id, result)
         return result
