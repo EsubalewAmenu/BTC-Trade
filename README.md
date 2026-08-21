@@ -6,8 +6,8 @@ USD-M futures candles or replay a stored candle file one candle at a time.
 
 ## Strategy definition
 
-The default intraday profile uses 15-minute entries, a 1-hour trend filter, and a 4-hour market
-context filter.
+The default intraday profile uses breakout-and-retest pullbacks on 15-minute entries, a 1-hour
+trend filter, and a 4-hour market context filter.
 
 1. All three timeframes must agree: close above/below EMA 20 and EMA 20 above/below EMA 50.
 2. Both EMAs must slope in the same direction over the last three bars.
@@ -79,6 +79,14 @@ ISO timestamps are supported.
 
 Use `--warmup-input` with the preceding month's file when testing higher-timeframe filters. Warmup
 candles initialize indicators but cannot open trades, keeping the requested month independent.
+
+Run the fixed five-month suite with a version name so every experiment stays contained:
+
+```bash
+python evaluate_suite.py --version pullback_v7_breakout_105m
+```
+
+Results are stored under `data/<version>/<month>/` with `data/<version>/summary.csv`.
 
 ## Parameters to test
 

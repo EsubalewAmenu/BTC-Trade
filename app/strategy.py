@@ -33,6 +33,7 @@ class MarketAnalysis:
     pullback_found: bool
     confirmation_found: bool
     pullback_bars: int
+    pullback_depth: float
     breakout_level: float | None
     invalidation_price: float | None
     rule_signal: str
@@ -117,15 +118,21 @@ def analyze(
     context_trend = classify_trend(context_candles, config)
     tolerance = config.pullback_touch_atr * current.atr
     confirmation_window = frame.iloc[-1 - config.confirmation_lookback : -1]
+    current_range = float(current.high - current.low)
+    close_fraction = (
+        (float(current.close - current.low) / current_range) if current_range > 0 else 0.5
+    )
     long_confirmation = bool(
         current.close > current.open
         and current.close > confirmation_window.high.max()
         and current.close > current.ema_fast
+        and close_fraction >= config.confirmation_close_fraction
     )
     short_confirmation = bool(
         current.close < current.open
         and current.close < confirmation_window.low.min()
         and current.close < current.ema_fast
+        and close_fraction <= 1 - config.confirmation_close_fraction
     )
 
     # A candidate impulse must actually break prior structure. The candles between that
@@ -147,56 +154,95 @@ def analyze(
         average_pullback_range = float((pullback.high - pullback.low).mean())
         controlled = average_pullback_range <= impulse_range * config.pullback_max_retrace
 
-        long_breakout = bool(
-            impulse.close > prior.high.max()
-            and impulse.close > impulse.open
-            and impulse.close - impulse.ema_fast >= config.impulse_atr * impulse.atr
-        )
-        short_breakout = bool(
-            impulse.close < prior.low.min()
-            and impulse.close < impulse.open
-            and impulse.ema_fast - impulse.close >= config.impulse_atr * impulse.atr
-        )
+        if config.strategy_variant == "ema_pullback":
+            long_breakout = bool(
+                impulse.close > impulse.open
+                and impulse.close - impulse.ema_fast >= config.impulse_atr * impulse.atr
+            )
+            short_breakout = bool(
+                impulse.close < impulse.open
+                and impulse.ema_fast - impulse.close >= config.impulse_atr * impulse.atr
+            )
+        else:
+            long_breakout = bool(
+                impulse.close > prior.high.max()
+                and impulse.close > impulse.open
+                and impulse.close - impulse.ema_fast >= config.impulse_atr * impulse.atr
+            )
+            short_breakout = bool(
+                impulse.close < prior.low.min()
+                and impulse.close < impulse.open
+                and impulse.ema_fast - impulse.close >= config.impulse_atr * impulse.atr
+            )
         long_impulse = long_impulse or long_breakout
         short_impulse = short_impulse or short_breakout
         breakout_high = float(prior.high.max())
         breakout_low = float(prior.low.min())
-        candidate_long_pullback = bool(
-            long_breakout
-            and controlled
-            and (pullback.close < pullback.open).any()
-            and ((pullback.low <= pullback.ema_fast + tolerance).any()
-                 or (pullback.low <= breakout_high + tolerance).any())
-            and (pullback.close >= breakout_high - tolerance).all()
-            and (pullback.close > pullback.ema_slow).all()
+        long_leg = float(impulse.high) - breakout_high
+        short_leg = breakout_low - float(impulse.low)
+        long_depth = (
+            (float(impulse.high) - float(pullback.low.min())) / long_leg
+            if long_leg > 0 else float("inf")
         )
-        candidate_short_pullback = bool(
-            short_breakout
-            and controlled
-            and (pullback.close > pullback.open).any()
-            and ((pullback.high >= pullback.ema_fast - tolerance).any()
-                 or (pullback.high >= breakout_low - tolerance).any())
-            and (pullback.close <= breakout_low + tolerance).all()
-            and (pullback.close < pullback.ema_slow).all()
+        short_depth = (
+            (float(pullback.high.max()) - float(impulse.low)) / short_leg
+            if short_leg > 0 else float("inf")
         )
+        if config.strategy_variant == "ema_pullback":
+            candidate_long_pullback = bool(
+                long_breakout and controlled
+                and (pullback.close < pullback.open).any()
+                and (pullback.low <= pullback.ema_fast + tolerance).any()
+                and (pullback.close > pullback.ema_slow).all()
+            )
+            candidate_short_pullback = bool(
+                short_breakout and controlled
+                and (pullback.close > pullback.open).any()
+                and (pullback.high >= pullback.ema_fast - tolerance).any()
+                and (pullback.close < pullback.ema_slow).all()
+            )
+        else:
+            candidate_long_pullback = bool(
+                long_breakout and controlled
+                and (pullback.close < pullback.open).any()
+                and ((pullback.low <= pullback.ema_fast + tolerance).any()
+                     or (pullback.low <= breakout_high + tolerance).any())
+                and (pullback.close >= breakout_high - tolerance).all()
+                and (pullback.close > pullback.ema_slow).all()
+                and config.pullback_min_depth <= long_depth <= config.pullback_max_depth
+            )
+            candidate_short_pullback = bool(
+                short_breakout and controlled
+                and (pullback.close > pullback.open).any()
+                and ((pullback.high >= pullback.ema_fast - tolerance).any()
+                     or (pullback.high >= breakout_low - tolerance).any())
+                and (pullback.close <= breakout_low + tolerance).all()
+                and (pullback.close < pullback.ema_slow).all()
+                and config.pullback_min_depth <= short_depth <= config.pullback_max_depth
+            )
         long_pullback = long_pullback or candidate_long_pullback
         short_pullback = short_pullback or candidate_short_pullback
         if candidate_long_pullback and long_confirmation and long_setup is None:
-            long_setup = (pullback_bars, breakout_high, float(pullback.low.min()))
+            long_setup = (
+                pullback_bars, breakout_high, float(pullback.low.min()), long_depth
+            )
         if candidate_short_pullback and short_confirmation and short_setup is None:
-            short_setup = (pullback_bars, breakout_low, float(pullback.high.max()))
+            short_setup = (
+                pullback_bars, breakout_low, float(pullback.high.max()), short_depth
+            )
 
     pullback_bars = 0
+    pullback_depth = 0.0
     breakout_level = invalidation_price = None
     if trend == trend_filter == context_trend == "UP" and long_setup:
         signal = Signal.LONG.value
-        pullback_bars, breakout_level, pullback_low = long_setup
+        pullback_bars, breakout_level, pullback_low, pullback_depth = long_setup
         invalidation_price = pullback_low - config.stop_buffer_atr * current.atr
         reason = "bullish trends, breakout impulse, controlled structure retest, bullish confirmation"
         impulse_found, pullback_found, confirmation_found = True, True, True
     elif trend == trend_filter == context_trend == "DOWN" and short_setup:
         signal = Signal.SHORT.value
-        pullback_bars, breakout_level, pullback_high = short_setup
+        pullback_bars, breakout_level, pullback_high, pullback_depth = short_setup
         invalidation_price = pullback_high + config.stop_buffer_atr * current.atr
         reason = "bearish trends, breakout impulse, controlled structure retest, bearish confirmation"
         impulse_found, pullback_found, confirmation_found = True, True, True
@@ -242,6 +288,7 @@ def analyze(
         pullback_found=pullback_found,
         confirmation_found=confirmation_found,
         pullback_bars=pullback_bars,
+        pullback_depth=round(pullback_depth, 8),
         breakout_level=None if breakout_level is None else round(breakout_level, 8),
         invalidation_price=None if invalidation_price is None else round(invalidation_price, 8),
         rule_signal=signal,

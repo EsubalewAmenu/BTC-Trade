@@ -23,6 +23,7 @@ def _bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
+    strategy_variant: str
     symbol: str
     interval: str
     trend_interval: str
@@ -41,7 +42,10 @@ class Settings:
     pullback_max_bars: int
     pullback_touch_atr: float
     pullback_max_retrace: float
+    pullback_min_depth: float
+    pullback_max_depth: float
     confirmation_lookback: int
+    confirmation_close_fraction: float
     stop_atr: float
     stop_buffer_atr: float
     reward_risk: float
@@ -68,6 +72,9 @@ class Settings:
 
     @classmethod
     def from_env(cls):
+        variant = os.getenv("STRATEGY_VARIANT", "breakout_retest").strip().lower()
+        if variant not in {"breakout_retest", "ema_pullback"}:
+            raise ValueError("STRATEGY_VARIANT must be breakout_retest or ema_pullback")
         fast = _int("EMA_FAST", 20, 2)
         slow = _int("EMA_SLOW", 50, 3)
         if fast >= slow:
@@ -83,6 +90,7 @@ class Settings:
         if level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
             raise ValueError("LOG_LEVEL is invalid")
         return cls(
+            strategy_variant=variant,
             symbol=symbol,
             interval=os.getenv("TRADE_INTERVAL", "15m"),
             trend_interval=os.getenv("TREND_INTERVAL", "1h"),
@@ -103,7 +111,12 @@ class Settings:
             pullback_max_bars=maximum,
             pullback_touch_atr=_float("PULLBACK_TOUCH_ATR", 0.25, 0, 2),
             pullback_max_retrace=_float("PULLBACK_MAX_RETRACE", 0.8, 0.2, 2),
+            pullback_min_depth=_float("PULLBACK_MIN_DEPTH", 0.35, 0, 2),
+            pullback_max_depth=_float("PULLBACK_MAX_DEPTH", 1.15, 0.1, 3),
             confirmation_lookback=_int("CONFIRMATION_LOOKBACK", 2, 1),
+            confirmation_close_fraction=_float(
+                "CONFIRMATION_CLOSE_FRACTION", 0.65, 0.5, 1
+            ),
             stop_atr=_float("STOP_ATR", 1.0, 0.2, 10),
             stop_buffer_atr=_float("STOP_BUFFER_ATR", 0.15, 0, 2),
             reward_risk=_float("REWARD_RISK", 1.5, 1, 10),
@@ -116,7 +129,7 @@ class Settings:
             paper_start_balance=_float("PAPER_START_BALANCE", 500, 10, 1_000_000),
             taker_fee_rate=_float("TAKER_FEE_RATE", 0.0005, 0, 0.01),
             slippage_bps=_float("SLIPPAGE_BPS", 2, 0, 100),
-            max_hold_minutes=_int("MAX_HOLD_MINUTES", 240, 5),
+            max_hold_minutes=_int("MAX_HOLD_MINUTES", 105, 5),
             cooldown_minutes=_int("COOLDOWN_MINUTES", 10, 0),
             binance_base_url=os.getenv("BINANCE_BASE_URL", "https://fapi.binance.com").rstrip("/"),
             binance_api_key=os.getenv("BINANCE_API_KEY", ""),
