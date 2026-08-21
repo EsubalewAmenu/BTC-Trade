@@ -18,6 +18,7 @@ class Position:
     quantity: float
     notional: float
     stop_price: float
+    initial_stop_price: float
     target_price: float
     entry_fee: float
     rationale: str
@@ -37,6 +38,9 @@ class PaperEngine:
             state = json.loads(self.state_path.read_text())
             if state.get("position"):
                 state["position"].pop("confidence", None)
+                state["position"].setdefault(
+                    "initial_stop_price", state["position"]["stop_price"]
+                )
             return state
         return {
             "balance": self.config.paper_start_balance,
@@ -111,11 +115,13 @@ class PaperEngine:
         if decision.action == "LONG":
             gross_target = entry + stop_distance * self.config.reward_risk
             required_fill = (entry * (1 + fee) + desired_net_reward) / (1 - fee)
-            target = max(gross_target, required_fill / (1 - adverse))
+            minimum_net_target = required_fill / (1 - adverse)
+            target = max(gross_target, minimum_net_target)
         else:
             gross_target = entry - stop_distance * self.config.reward_risk
             required_fill = (entry * (1 - fee) - desired_net_reward) / (1 + fee)
-            target = min(gross_target, required_fill / (1 + adverse))
+            maximum_net_target = required_fill / (1 + adverse)
+            target = min(gross_target, maximum_net_target)
         quantity = risk_amount / loss_per_unit
         max_notional = self.state["balance"] * self.config.max_leverage
         quantity = min(quantity, max_notional / entry)
@@ -129,6 +135,7 @@ class PaperEngine:
             quantity=quantity,
             notional=notional,
             stop_price=stop,
+            initial_stop_price=stop,
             target_price=target,
             entry_fee=notional * self.config.taker_fee_rate,
             rationale=decision.rationale,
@@ -190,6 +197,22 @@ class PaperEngine:
             return self._close_at(position.stop_price, "STOP", now)
         if target_hit:
             return self._close_at(position.target_price, "TARGET", now)
+        initial_risk = abs(position.entry_price - position.initial_stop_price)
+        trigger = initial_risk * self.config.breakeven_trigger_r
+        adverse = self.config.slippage_bps / 10_000
+        fee = self.config.taker_fee_rate
+        if position.side == "LONG" and float(candle.high) >= position.entry_price + trigger:
+            breakeven_fill = position.entry_price * (1 + fee) / (1 - fee)
+            breakeven_stop = breakeven_fill / (1 - adverse)
+            if breakeven_stop > position.stop_price:
+                self.state["position"]["stop_price"] = breakeven_stop
+                self._save()
+        elif position.side == "SHORT" and float(candle.low) <= position.entry_price - trigger:
+            breakeven_fill = position.entry_price * (1 - fee) / (1 + fee)
+            breakeven_stop = breakeven_fill / (1 + adverse)
+            if breakeven_stop < position.stop_price:
+                self.state["position"]["stop_price"] = breakeven_stop
+                self._save()
         age_minutes = (now - datetime.fromisoformat(position.opened_at)).total_seconds() / 60
         if age_minutes + 0.001 >= self.config.max_hold_minutes:
             return self._close_at(float(candle.close), "TIMEOUT", now)

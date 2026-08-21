@@ -54,7 +54,8 @@ def main():
             if not engine.position:
                 candles = client.klines(config.symbol, config.interval, config.candle_limit)
                 trend = client.klines(config.symbol, config.trend_interval, config.candle_limit)
-                analysis = analyze(candles, trend, config)
+                context = client.klines(config.symbol, config.context_interval, config.candle_limit)
+                analysis = analyze(candles, trend, context, config)
                 if engine.state["last_decision_candle"] != analysis.candle_time:
                     decision = decide(analysis)
                     allowed, reason = engine.can_open(decision, analysis)

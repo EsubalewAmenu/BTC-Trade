@@ -28,6 +28,7 @@ class MarketAnalysis:
     ema_slow: float
     trend: str
     trend_filter: str
+    context_trend: str
     impulse_found: bool
     pullback_found: bool
     confirmation_found: bool
@@ -71,12 +72,16 @@ def classify_trend(frame: pd.DataFrame, config) -> str:
     previous = enriched.iloc[-1 - config.trend_slope_bars]
     if (
         current.close > current.ema_fast > current.ema_slow
+        and current.ema_fast - current.ema_slow
+        >= config.minimum_trend_separation_atr * current.atr
         and current.ema_fast > previous.ema_fast
         and current.ema_slow > previous.ema_slow
     ):
         return "UP"
     if (
         current.close < current.ema_fast < current.ema_slow
+        and current.ema_slow - current.ema_fast
+        >= config.minimum_trend_separation_atr * current.atr
         and current.ema_fast < previous.ema_fast
         and current.ema_slow < previous.ema_slow
     ):
@@ -84,12 +89,22 @@ def classify_trend(frame: pd.DataFrame, config) -> str:
     return "RANGE"
 
 
-def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> MarketAnalysis:
+def analyze(
+    candles: pd.DataFrame,
+    trend_candles: pd.DataFrame,
+    context_candles: pd.DataFrame,
+    config,
+) -> MarketAnalysis:
     required = max(
         config.ema_slow + config.trend_slope_bars,
         config.breakout_lookback + config.pullback_max_bars + 2,
     )
-    if len(candles) < required or len(trend_candles) < config.ema_slow + config.trend_slope_bars:
+    trend_required = config.ema_slow + config.trend_slope_bars
+    if (
+        len(candles) < required
+        or len(trend_candles) < trend_required
+        or len(context_candles) < trend_required
+    ):
         raise ValueError("Not enough closed candles for pullback analysis")
 
     frame = add_indicators(candles, config)
@@ -99,6 +114,7 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
 
     trend = classify_trend(candles, config)
     trend_filter = classify_trend(trend_candles, config)
+    context_trend = classify_trend(context_candles, config)
     tolerance = config.pullback_touch_atr * current.atr
     confirmation_window = frame.iloc[-1 - config.confirmation_lookback : -1]
     long_confirmation = bool(
@@ -172,13 +188,13 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
 
     pullback_bars = 0
     breakout_level = invalidation_price = None
-    if trend == trend_filter == "UP" and long_setup:
+    if trend == trend_filter == context_trend == "UP" and long_setup:
         signal = Signal.LONG.value
         pullback_bars, breakout_level, pullback_low = long_setup
         invalidation_price = pullback_low - config.stop_buffer_atr * current.atr
         reason = "bullish trends, breakout impulse, controlled structure retest, bullish confirmation"
         impulse_found, pullback_found, confirmation_found = True, True, True
-    elif trend == trend_filter == "DOWN" and short_setup:
+    elif trend == trend_filter == context_trend == "DOWN" and short_setup:
         signal = Signal.SHORT.value
         pullback_bars, breakout_level, pullback_high = short_setup
         invalidation_price = pullback_high + config.stop_buffer_atr * current.atr
@@ -186,8 +202,11 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
         impulse_found, pullback_found, confirmation_found = True, True, True
     else:
         signal = Signal.WAIT.value
-        if trend != trend_filter or trend == "RANGE":
-            reason = f"trend not aligned: execution={trend}, higher={trend_filter}"
+        if len({trend, trend_filter, context_trend}) != 1 or trend == "RANGE":
+            reason = (
+                f"trend not aligned: execution={trend}, higher={trend_filter}, "
+                f"context={context_trend}"
+            )
         elif trend == "UP":
             impulse_found, pullback_found, confirmation_found = (
                 long_impulse, long_pullback, long_confirmation
@@ -204,7 +223,7 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
                 f"bearish context incomplete: impulse={short_impulse}, "
                 f"pullback={short_pullback}, confirmation={short_confirmation}"
             )
-        if trend != trend_filter or trend == "RANGE":
+        if len({trend, trend_filter, context_trend}) != 1 or trend == "RANGE":
             impulse_found = pullback_found = confirmation_found = False
 
     return MarketAnalysis(
@@ -218,6 +237,7 @@ def analyze(candles: pd.DataFrame, trend_candles: pd.DataFrame, config) -> Marke
         ema_slow=round(float(current.ema_slow), 8),
         trend=trend,
         trend_filter=trend_filter,
+        context_trend=context_trend,
         impulse_found=impulse_found,
         pullback_found=pullback_found,
         confirmation_found=confirmation_found,

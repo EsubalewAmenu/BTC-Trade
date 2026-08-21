@@ -26,6 +26,7 @@ def config(path):
         max_daily_loss=.02, cooldown_minutes=0, slippage_bps=0, stop_atr=1,
         risk_per_trade=.005, max_leverage=3, reward_risk=2,
         minimum_net_reward_risk=.1,
+        breakeven_trigger_r=1,
         taker_fee_rate=.0005, max_hold_minutes=240,
     )
 
@@ -119,6 +120,26 @@ class PaperEngineTests(unittest.TestCase):
                 + stop_fill * cfg.taker_fee_rate
             )
             self.assertGreaterEqual(result["net_pnl"] / planned_loss, 1.1 - 1e-9)
+
+    def test_breakeven_stop_activates_on_next_candle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(config(directory), Ledger())
+            now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+            position = engine.open(Decision("LONG", "test"), analysis(), 100_000, now)
+            trigger = SimpleNamespace(
+                low=position.entry_price, high=position.entry_price + 101,
+                close=position.entry_price + 100,
+                close_time=pd.Timestamp("2026-01-01T00:05:00Z"),
+            )
+            self.assertIsNone(engine.check_exit_candle(trigger))
+            self.assertGreater(engine.position.stop_price, position.entry_price)
+            next_candle = SimpleNamespace(
+                low=engine.position.stop_price - 1, high=engine.position.stop_price + 1,
+                close=engine.position.stop_price,
+                close_time=pd.Timestamp("2026-01-01T00:10:00Z"),
+            )
+            result = engine.check_exit_candle(next_candle)
+            self.assertAlmostEqual(result["net_pnl"], 0.0, places=8)
 
 
 if __name__ == "__main__":

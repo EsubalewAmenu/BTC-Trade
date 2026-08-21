@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 EVENT_FIELDS = [
-    "candle_time", "price", "signal", "result", "trend", "higher_trend",
+    "candle_time", "price", "signal", "result", "trend", "higher_trend", "context_trend",
     "impulse", "pullback", "confirmation", "pullback_bars", "breakout_level",
     "invalidation_price", "reason",
 ]
@@ -46,6 +46,7 @@ class CsvLedger:
             "result": result,
             "trend": analysis.trend,
             "higher_trend": analysis.trend_filter,
+            "context_trend": analysis.context_trend,
             "impulse": analysis.impulse_found,
             "pullback": analysis.pullback_found,
             "confirmation": analysis.confirmation_found,

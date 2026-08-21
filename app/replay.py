@@ -65,8 +65,16 @@ def pandas_interval(value: str) -> str:
     return f"{number}{'min' if unit == 'm' else 'h'}"
 
 
-def run_replay(input_path: Path, output_dir: Path, config: Settings):
-    source = load_candles(input_path)
+def run_replay(
+    input_path: Path, output_dir: Path, config: Settings, warmup_path: Path | None = None
+):
+    evaluation = load_candles(input_path)
+    evaluation_start = evaluation.iloc[0].open_time
+    if warmup_path:
+        source = pd.concat([load_candles(warmup_path), evaluation], ignore_index=True)
+        source = source.sort_values("open_time").drop_duplicates("open_time").reset_index(drop=True)
+    else:
+        source = evaluation
     source_step = source.open_time.diff().dropna().median()
     execution_step = pd.Timedelta(pandas_interval(config.interval))
     if execution_step < source_step or execution_step % source_step != pd.Timedelta(0):
@@ -79,6 +87,10 @@ def run_replay(input_path: Path, output_dir: Path, config: Settings):
     if trend_step < execution_step or trend_step % execution_step != pd.Timedelta(0):
         raise ValueError("TREND_INTERVAL must be an exact multiple of TRADE_INTERVAL")
     trend_all = resample_closed(source, pandas_interval(config.trend_interval))
+    context_step = pd.Timedelta(pandas_interval(config.context_interval))
+    if context_step < trend_step or context_step % trend_step != pd.Timedelta(0):
+        raise ValueError("CONTEXT_INTERVAL must be an exact multiple of TREND_INTERVAL")
+    context_all = resample_closed(source, pandas_interval(config.context_interval))
     ledger = CsvLedger(output_dir, reset=True)
     replay_config = type(config)(**{**config.__dict__, "data_dir": output_dir})
     state_path = output_dir / "state.json"
@@ -91,6 +103,8 @@ def run_replay(input_path: Path, output_dir: Path, config: Settings):
     )
 
     for index, candle in candles.iterrows():
+        if candle.open_time < evaluation_start:
+            continue
         now = candle.close_time.to_pydatetime()
         if pending and not engine.position:
             decision, analysis = pending
@@ -102,8 +116,9 @@ def run_replay(input_path: Path, output_dir: Path, config: Settings):
         if len(visible) < warmup:
             continue
         trend = trend_all.loc[trend_all.close_time <= candle.close_time].tail(config.candle_limit)
+        context = context_all.loc[context_all.close_time <= candle.close_time].tail(config.candle_limit)
         try:
-            analysis = analyze(visible, trend, config)
+            analysis = analyze(visible, trend, context, config)
         except ValueError:
             continue
         decision = decide(analysis)
@@ -124,9 +139,13 @@ def main():
     parser = argparse.ArgumentParser(description="Replay BTCUSDT candles one at a time")
     parser.add_argument("--input", required=True, type=Path, help="Binance kline or OHLCV CSV")
     parser.add_argument("--output", type=Path, default=Path("data/replay"))
+    parser.add_argument(
+        "--warmup-input", type=Path,
+        help="Earlier candles used only to warm indicators; no trades are opened in this period",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    run_replay(args.input, args.output, Settings.from_env())
+    run_replay(args.input, args.output, Settings.from_env(), args.warmup_input)
 
 
 if __name__ == "__main__":

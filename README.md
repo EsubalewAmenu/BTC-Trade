@@ -6,9 +6,10 @@ USD-M futures candles or replay a stored candle file one candle at a time.
 
 ## Strategy definition
 
-The default scalp profile uses 5-minute entries and a 15-minute trend filter.
+The default intraday profile uses 15-minute entries, a 1-hour trend filter, and a 4-hour market
+context filter.
 
-1. Both timeframes must agree: close above/below EMA 20 and EMA 20 above/below EMA 50.
+1. All three timeframes must agree: close above/below EMA 20 and EMA 20 above/below EMA 50.
 2. Both EMAs must slope in the same direction over the last three bars.
 3. An impulse must close beyond recent swing structure and extend at least `IMPULSE_ATR` from EMA 20.
 4. The next 2-6 candles must form a controlled retracement to the EMA/breakout zone without closing
@@ -17,7 +18,8 @@ The default scalp profile uses 5-minute entries and a 15-minute trend filter.
    short uses the inverse condition.
 6. The stop sits beyond the pullback swing with an ATR buffer. Position size includes expected stop
    slippage and both taker fees so configured risk is the total planned loss. The target is adjusted
-   when necessary to preserve minimum reward/risk after costs. A maximum holding time completes exits.
+   when necessary to preserve minimum reward/risk after costs. After a completed candle reaches 1R,
+   the stop moves to a cost-adjusted breakeven level for subsequent candles.
 
 Every condition is computed from closed candles. The replay makes a decision after one candle
 closes and, if valid, fills at the next candle's open. The entry candle is included in exit
@@ -75,6 +77,9 @@ Accepted input is either Binance's headerless 12-column kline CSV or a CSV with
 `open_time,open,high,low,close,volume` columns. Numeric millisecond and microsecond timestamps and
 ISO timestamps are supported.
 
+Use `--warmup-input` with the preceding month's file when testing higher-timeframe filters. Warmup
+candles initialize indicators but cannot open trades, keeping the requested month independent.
+
 ## Parameters to test
 
 Do not optimize many parameters against the same month. Establish defaults on one development
@@ -83,11 +88,13 @@ period and validate them unchanged on later unseen periods.
 ```text
 EMA_FAST / EMA_SLOW
 TREND_SLOPE_BARS
+MINIMUM_TREND_SEPARATION_ATR
 BREAKOUT_LOOKBACK / IMPULSE_ATR
 PULLBACK_MIN_BARS / PULLBACK_MAX_BARS
 PULLBACK_TOUCH_ATR / PULLBACK_MAX_RETRACE
 CONFIRMATION_LOOKBACK / STOP_BUFFER_ATR
 REWARD_RISK / MINIMUM_NET_REWARD_RISK / MAX_HOLD_MINUTES
+BREAKEVEN_TRIGGER_R
 TAKER_FEE_RATE / SLIPPAGE_BPS
 ```
 

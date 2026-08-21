@@ -12,7 +12,10 @@ from strategy import classify_trend
 
 
 def config():
-    return SimpleNamespace(ema_fast=3, ema_slow=6, atr_period=3, trend_slope_bars=2)
+    return SimpleNamespace(
+        ema_fast=3, ema_slow=6, atr_period=3, trend_slope_bars=2,
+        minimum_trend_separation_atr=0.5,
+    )
 
 
 def candles(values):

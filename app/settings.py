@@ -26,6 +26,7 @@ class Settings:
     symbol: str
     interval: str
     trend_interval: str
+    context_interval: str
     candle_limit: int
     poll_seconds: int
     max_consecutive_errors: int
@@ -33,6 +34,7 @@ class Settings:
     ema_slow: int
     atr_period: int
     trend_slope_bars: int
+    minimum_trend_separation_atr: float
     breakout_lookback: int
     impulse_atr: float
     pullback_min_bars: int
@@ -44,6 +46,7 @@ class Settings:
     stop_buffer_atr: float
     reward_risk: float
     minimum_net_reward_risk: float
+    breakeven_trigger_r: float
     risk_per_trade: float
     max_daily_loss: float
     max_trades_per_day: int
@@ -81,8 +84,9 @@ class Settings:
             raise ValueError("LOG_LEVEL is invalid")
         return cls(
             symbol=symbol,
-            interval=os.getenv("TRADE_INTERVAL", "5m"),
-            trend_interval=os.getenv("TREND_INTERVAL", "15m"),
+            interval=os.getenv("TRADE_INTERVAL", "15m"),
+            trend_interval=os.getenv("TREND_INTERVAL", "1h"),
+            context_interval=os.getenv("CONTEXT_INTERVAL", "4h"),
             candle_limit=_int("CANDLE_LIMIT", 300, 100),
             poll_seconds=_int("POLL_SECONDS", 10, 5),
             max_consecutive_errors=_int("MAX_CONSECUTIVE_ERRORS", 20, 1),
@@ -90,6 +94,9 @@ class Settings:
             ema_slow=slow,
             atr_period=_int("ATR_PERIOD", 14, 2),
             trend_slope_bars=_int("TREND_SLOPE_BARS", 3, 1),
+            minimum_trend_separation_atr=_float(
+                "MINIMUM_TREND_SEPARATION_ATR", 0, 0, 10
+            ),
             breakout_lookback=_int("BREAKOUT_LOOKBACK", 10, 2),
             impulse_atr=_float("IMPULSE_ATR", 1.0, 0.1, 5),
             pullback_min_bars=minimum,
@@ -101,6 +108,7 @@ class Settings:
             stop_buffer_atr=_float("STOP_BUFFER_ATR", 0.15, 0, 2),
             reward_risk=_float("REWARD_RISK", 1.5, 1, 10),
             minimum_net_reward_risk=_float("MINIMUM_NET_REWARD_RISK", 1.1, 0.5, 10),
+            breakeven_trigger_r=_float("BREAKEVEN_TRIGGER_R", 1.0, 0.5, 10),
             risk_per_trade=_float("RISK_PER_TRADE", 0.005, 0.0001, 0.02),
             max_daily_loss=_float("MAX_DAILY_LOSS", 0.02, 0.001, 0.10),
             max_trades_per_day=_int("MAX_TRADES_PER_DAY", 12, 1),
@@ -108,7 +116,7 @@ class Settings:
             paper_start_balance=_float("PAPER_START_BALANCE", 500, 10, 1_000_000),
             taker_fee_rate=_float("TAKER_FEE_RATE", 0.0005, 0, 0.01),
             slippage_bps=_float("SLIPPAGE_BPS", 2, 0, 100),
-            max_hold_minutes=_int("MAX_HOLD_MINUTES", 60, 5),
+            max_hold_minutes=_int("MAX_HOLD_MINUTES", 240, 5),
             cooldown_minutes=_int("COOLDOWN_MINUTES", 10, 0),
             binance_base_url=os.getenv("BINANCE_BASE_URL", "https://fapi.binance.com").rstrip("/"),
             binance_api_key=os.getenv("BINANCE_API_KEY", ""),
