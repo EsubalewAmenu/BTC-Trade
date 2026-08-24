@@ -110,7 +110,7 @@ class Settings:
         if level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
             raise ValueError("LOG_LEVEL is invalid")
         interval = os.getenv("TRADE_INTERVAL", "15m").strip().lower()
-        poll_seconds = max(5, _interval_seconds(interval) // 3)
+        poll_seconds = max(5, _interval_seconds(interval) // 5)
         return cls(
             decision_mode=decision_mode,
             log_external_responses=_bool("LOG_EXTERNAL_RESPONSES", True),

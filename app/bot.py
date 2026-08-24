@@ -59,6 +59,10 @@ def main():
                     candles = client.klines(config.symbol, config.interval, 201).tail(200)
                     candle_time = candles.iloc[-1].close_time.isoformat()
                     if engine.state["last_decision_candle"] == candle_time:
+                        LOG.info(
+                            "LLM SKIPPED latest closed candle already evaluated: %s",
+                            candle_time,
+                        )
                         heartbeat.touch()
                         consecutive_errors = 0
                         time.sleep(config.poll_seconds)

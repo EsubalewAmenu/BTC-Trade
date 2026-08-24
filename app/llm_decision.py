@@ -92,6 +92,11 @@ def _json_object(value):
 def request_decision(candles: pd.DataFrame, config) -> tuple[Decision, LlmAnalysis]:
     context = candle_context(candles)
     system_context = Path(__file__).with_name("field_guide.txt").read_text()
+    LOG.info(
+        "LLM REQUEST endpoint=%s candles=%d latest_closed_candle=%s",
+        config.llm_endpoint_url, len(candles),
+        pd.Timestamp(candles.iloc[-1].close_time).isoformat(),
+    )
     raw_response = post_json(
         config.llm_endpoint_url,
         {"system_context": system_context, "user_context": context},
@@ -103,8 +108,8 @@ def request_decision(candles: pd.DataFrame, config) -> tuple[Decision, LlmAnalys
             raw_response if isinstance(raw_response, str) else json.dumps(raw_response),
         )
     payload = _json_object(raw_response)
-    if getattr(config, "log_external_responses", False):
-        LOG.info("LLM PARSED RESPONSE body=%s", json.dumps(payload, sort_keys=True))
+    # if getattr(config, "log_external_responses", False):
+    #     LOG.info("LLM PARSED RESPONSE body=%s", json.dumps(payload, sort_keys=True))
     direction = str(payload.get("direction", "")).upper()
     if direction not in {Signal.WAIT.value, Signal.LONG.value, Signal.SHORT.value}:
         raise ValueError("LLM direction must be WAIT, LONG, or SHORT")

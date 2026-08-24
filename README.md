@@ -33,8 +33,8 @@ bot downloads enough Binance futures klines to provide exactly 200 closed candle
 EMA50, and posts `system_context` plus CSV `user_context` to `LLM_ENDPOINT_URL`. Invalid HTTP,
 non-JSON, stale-candle, low-confidence, non-2R, or invalid price responses become `WAIT`.
 
-The polling interval is always one third of `TRADE_INTERVAL`: 15m polls every 5 minutes and 1h
-polls every 20 minutes. Binance's still-active candle is removed by comparing its close time with
+The polling interval is always one fifth of `TRADE_INTERVAL`: 15m polls every 3 minutes and 1h
+polls every 12 minutes. Binance's still-active candle is removed by comparing its close time with
 current UTC time; only the final 200 fully closed candles are sent to the LLM.
 
 The accepted LLM response is:

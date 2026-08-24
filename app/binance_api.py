@@ -46,7 +46,7 @@ class BinanceFuturesClient:
         payload = response.json()
         # Kline bodies contain 200 candles and are intentionally hidden after
         # confirming the Binance payload during development.
-        if self.log_responses and path != "/fapi/v1/klines":
+        if self.log_responses and path != "/fapi/v1/klines" and path != "/fapi/v3/account":
             LOG.info(
                 "BINANCE RESPONSE path=%s params=%s body=%s",
                 path, params or {}, json.dumps(payload, separators=(",", ":")),
