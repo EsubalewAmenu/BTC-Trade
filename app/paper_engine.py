@@ -21,6 +21,7 @@ class Position:
     initial_stop_price: float
     target_price: float
     entry_fee: float
+    confidence: float
     rationale: str
     candle_time: str
 
@@ -37,7 +38,7 @@ class PaperEngine:
         if self.state_path.exists():
             state = json.loads(self.state_path.read_text())
             if state.get("position"):
-                state["position"].pop("confidence", None)
+                state["position"].setdefault("confidence", 0.0)
                 state["position"].setdefault(
                     "initial_stop_price", state["position"]["stop_price"]
                 )
@@ -80,6 +81,10 @@ class PaperEngine:
             return False, "daily loss limit reached"
         if decision.action not in {"LONG", "SHORT"}:
             return False, "decision is WAIT"
+        if getattr(analysis, "confidence", 100) < getattr(
+            self.config, "llm_min_confidence", 0
+        ):
+            return False, "confidence below configured minimum"
         if decision.action == "LONG" and analysis.trend_filter == "DOWN":
             return False, "long blocked by higher-timeframe downtrend"
         if decision.action == "SHORT" and analysis.trend_filter == "UP":
@@ -112,7 +117,18 @@ class PaperEngine:
         loss_per_unit = execution_loss + entry * self.config.taker_fee_rate + stop_fill * self.config.taker_fee_rate
         desired_net_reward = loss_per_unit * self.config.minimum_net_reward_risk
         fee = self.config.taker_fee_rate
-        if decision.action == "LONG":
+        proposed_target = getattr(analysis, "target_price", None)
+        if proposed_target is not None:
+            valid_target = (
+                proposed_target > entry if decision.action == "LONG"
+                else proposed_target < entry
+            )
+            if not valid_target:
+                return None
+            target = float(proposed_target)
+            if abs(target - entry) / stop_distance < 2:
+                return None
+        elif decision.action == "LONG":
             gross_target = entry + stop_distance * self.config.reward_risk
             required_fill = (entry * (1 + fee) + desired_net_reward) / (1 - fee)
             minimum_net_target = required_fill / (1 - adverse)
@@ -138,6 +154,7 @@ class PaperEngine:
             initial_stop_price=stop,
             target_price=target,
             entry_fee=notional * self.config.taker_fee_rate,
+            confidence=float(getattr(analysis, "confidence", 0.0)),
             rationale=decision.rationale,
             candle_time=analysis.candle_time,
         )

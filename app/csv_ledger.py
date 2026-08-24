@@ -11,7 +11,7 @@ TRADE_FIELDS = [
     "trade_id", "status", "side", "opened_at", "closed_at", "entry_price",
     "exit_price", "quantity_btc", "notional_usdt", "stop_price", "target_price",
     "entry_fee", "exit_fee", "gross_pnl", "net_pnl", "exit_reason",
-    "hold_minutes", "signal_candle", "balance_after", "rationale",
+    "hold_minutes", "confidence", "rationale", "signal_candle", "balance_after",
 ]
 
 
@@ -29,9 +29,22 @@ class CsvLedger:
 
     @staticmethod
     def _ensure(path, fields):
-        if not path.exists():
-            with path.open("w", newline="", encoding="utf-8") as handle:
-                csv.DictWriter(handle, fieldnames=fields).writeheader()
+        if path.exists():
+            with path.open(newline="", encoding="utf-8") as handle:
+                reader = csv.DictReader(handle)
+                rows = list(reader)
+                existing = reader.fieldnames or []
+            if existing == fields:
+                return
+            temporary = path.with_suffix(".schema.tmp")
+            with temporary.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(rows)
+            temporary.replace(path)
+            return
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            csv.DictWriter(handle, fieldnames=fields).writeheader()
 
     @staticmethod
     def _append(path, fields, row):
@@ -66,6 +79,7 @@ class CsvLedger:
             "stop_price": position.stop_price, "target_price": position.target_price,
             "entry_fee": position.entry_fee, "exit_fee": "", "gross_pnl": "",
             "net_pnl": "", "exit_reason": "", "hold_minutes": "",
+            "confidence": position.confidence,
             "signal_candle": position.candle_time, "balance_after": "",
             "rationale": position.rationale,
         })

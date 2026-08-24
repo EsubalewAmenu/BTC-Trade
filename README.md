@@ -1,7 +1,7 @@
 # BTCUSDT Pullback Paper Trader
 
-This project implements one strategy only: a deterministic BTCUSDT trend pullback. It contains
-no LLM integration and no exchange order-placement endpoint. It can either watch closed Binance
+This project implements one strategy only: a BTCUSDT trend pullback. It supports a guarded LLM
+decision mode and contains no exchange order-placement endpoint. It can either watch closed Binance
 USD-M futures candles or replay a stored candle file one candle at a time.
 
 ## Strategy definition
@@ -27,6 +27,37 @@ evaluation. If a historical candle touches both stop and target, the replay reco
 because tick order is unknown.
 
 ## Live paper mode
+
+In the default `DECISION_MODE=llm`, each newly closed execution candle triggers one request. The
+bot downloads enough Binance futures klines to provide exactly 200 closed candles, calculates
+EMA50, and posts `system_context` plus CSV `user_context` to `LLM_ENDPOINT_URL`. Invalid HTTP,
+non-JSON, stale-candle, low-confidence, non-2R, or invalid price responses become `WAIT`.
+
+The polling interval is always one third of `TRADE_INTERVAL`: 15m polls every 5 minutes and 1h
+polls every 20 minutes. Binance's still-active candle is removed by comparing its close time with
+current UTC time; only the final 200 fully closed candles are sent to the LLM.
+
+The accepted LLM response is:
+
+```json
+{
+  "direction": "WAIT | LONG | SHORT",
+  "entry_price": null,
+  "stop_price": null,
+  "target_price": null,
+  "confidence": 0,
+  "rationale": "structural explanation",
+  "signal_candle_utc": "2026-08-24T12:14:59.999000+00:00"
+}
+```
+
+For LONG/SHORT, all three prices are required, geometry must be valid, and reward:risk must be at
+least 2.0. Trade IDs, quantities, fees, PnL, status, timestamps, exit reasons, and balances are
+always calculated locally and never trusted from the LLM.
+
+During development, `LOG_EXTERNAL_RESPONSES=true` logs public Binance response bodies plus the raw
+and parsed LLM response at INFO level. Disable it when the integration is stable. Credentials,
+signatures, and authenticated request headers are never logged.
 
 ```bash
 cp .env.example .env

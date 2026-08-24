@@ -1,0 +1,307 @@
+FIELD GUIDE
+Professional Trading Practice
+A beginner-to-intermediate guide to structure, confirmation, entries, stops, 2R forecasts, risk control and review
+
+Core principle  A good trade is a planned risk with evidence—not a prediction that must be right.
+
+
+Designed for chart replay and paper trading before live capital
+
+How to use this guide
+Read Chapters 1–6 once, then keep the one-page checklists beside your chart. During replay, stop after every closed candle, make the decision using only visible information, draw the forecast, and reveal the next candle only after the plan is fixed.
+Important  This is educational material, not individualized financial advice. Trading can lose all committed capital. Paper trade first; never use borrowed money or money needed for living expenses.
+
+
+Contents
+1. The professional trading mindset
+2. Read the chart from context to trigger
+3. Structure, levels and zones
+4. Confirming candles and retests
+5. Entry models and when to wait
+6. Structural stops and invalidation
+7. Reward:risk and realistic targets
+8. Position sizing and capital protection
+9. Drawing and forecasting long/short positions
+10. Trade management, journaling and review
+Appendices: checklists, formulas, candle glossary and practice routine
+1. The professional trading mindset
+Professionals do not need every move. They need repeatable decisions, controlled losses and enough clean opportunities for an edge to appear over many trades.
+Amateur habit
+Professional replacement
+Predict the next candle
+Define scenarios and invalidation
+Enter from fear of missing out
+Wait for location + confirmation
+Move the stop to avoid a loss
+Accept the preplanned structural stop
+Force 2R by inventing a distant target
+Skip when structure cannot realistically pay 2R
+Judge one result
+Review a sample of 20–50 rule-based trades
+
+
+The only controllable variables  Setup selection, entry timing, stop location, size, target, execution and review. Outcome is not controllable.
+
+
+2. Read the chart from context to trigger
+Set the timeframe and market. Use one primary execution timeframe and one higher timeframe for context.
+Identify the higher-timeframe regime: uptrend, downtrend or range.
+Mark major swing highs/lows and the nearest support/resistance zones.
+Ask where price is located: at an edge, in the middle, extended, or retesting a broken level.
+Wait for a closed-candle signal. Never use an unfinished candle as confirmation in replay.
+Measure entry, structural stop and realistic target. Reject the trade if reward:risk is below 2:1.
+Size the position from account risk—not from confidence or emotion.
+Top-down rule  Context chooses the direction; location chooses interest; confirmation chooses timing; invalidation chooses the stop; available space chooses whether the trade exists.
+
+
+3. Structure, levels and zones
+
+Figure 1. Swing structure is a sequence, not a single candle.
+What structure means
+Uptrend: repeated higher highs (HH) and higher lows (HL). Prefer longs on pullbacks or successful breakout retests.
+Downtrend: repeated lower lows (LL) and lower highs (LH). Prefer shorts on rallies or failed support retests.
+Range: price rotates between support and resistance without sustained progress. Trade edges only; avoid the middle.
+Structure change: a meaningful swing breaks, then price fails to restore the previous sequence. One wick alone is usually insufficient.
+A level is usually a zone
+Wicks show rejection extremes; candle bodies show where the market accepted price into the close. Mark a narrow zone that includes repeated closes and the most relevant rejection wicks. Do not widen it until every price becomes ‘support.’
+Observation
+Interpretation
+Support below current price
+Area where buyers previously absorbed selling; a long may use it for location or invalidation.
+Resistance above current price
+Area where sellers previously limited price; it can reduce long reward or provide short location.
+Broken resistance retested from above
+May become support if price rejects it and closes back above.
+Broken support retested from below
+May become resistance if price rejects it and closes back below.
+
+
+4. Confirming candles and retests
+
+Figure 2. The retest proves whether a breakout level can change role.
+What makes a candle confirming?
+A confirming candle closes in a way that supports the trade thesis at a meaningful location. Its value comes from context, not its name.
+Close: finishes beyond or back inside the relevant zone—not merely a wick through it.
+Body: meaningful relative to recent candles; a tiny body signals indecision.
+Rejection: wick rejects the wrong side while the close returns to the intended side.
+Follow-through: the next candle does not instantly erase the signal. A retest and response provide stronger evidence.
+Volume (optional): expansion can support a breakout, but volume never repairs bad structure or poor reward space.
+When to react
+Conservative entry: after the confirming candle closes, enter on the next candle only if price is still near the planned level. Stronger entry: wait for a retest of the level and a second response candle. Do not chase if the next candle opens far beyond the planned entry; recalculate the entire trade.
+Retest holds  Price returns to the broken zone, cannot close back through it, and produces a response in the breakout direction. The market has tested the level twice: first by breaking it, then by defending it.
+
+
+5. Entry models and when to wait
+Model
+Required evidence
+Common failure
+Breakout + retest
+Close beyond zone; retest holds; response candle
+Entering the first wick through resistance
+Pullback continuation
+Trend intact; pullback reaches support; rejection closes with trend
+Buying in the middle after price already expanded
+Range edge rejection
+Repeated edge; rejection; target toward opposite side
+Trading the center where reward is limited
+Structure reversal
+Sweep/rejection; break of swing; lower high or higher low retest
+Calling a top/bottom from RSI alone
+
+
+The no-trade decision
+No clear level or swing structure.
+Entry is in the middle of a range.
+Confirmation candle is unfinished.
+Stop must sit inside normal candle noise.
+Nearest opposing level prevents a realistic 2R target.
+Price has already run far from the planned entry.
+High-impact event risk is unknown or imminent.
+You are trying to recover a previous loss.
+6. Structural stops and invalidation
+A structural stop is placed where the trade thesis is objectively wrong. It is not an arbitrary percentage and not the smallest distance that makes the position tool display 2R.
+Setup
+Typical invalidation
+Long from higher low
+Below the swing low or defended support zone, plus a small volatility buffer
+Short from lower high
+Above the swing high or defended resistance zone, plus a buffer
+Breakout retest long
+Below the retest low and back inside the old range
+Breakdown retest short
+Above the retest high and back inside the old range
+
+
+Place the stop first; calculate size second.
+Account for wick noise and spread/fees, but do not make the stop so wide that the thesis becomes vague.
+Never widen a stop after entry. If new information invalidates the plan, exit; do not renegotiate with the chart.
+A stop hit does not prove the decision was wrong. It proves the defined scenario did not occur.
+7. Reward:risk and realistic targets
+R is the amount lost if the structural stop is hit. A 2R target earns twice the planned risk before fees. Reward:risk is a filter, not a guarantee.
+Formula
+Example
+Long risk = Entry − Stop
+Entry 100; stop 98 → risk = 2
+Long 2R target = Entry + 2 × risk
+100 + 2×2 = 104
+Short risk = Stop − Entry
+Entry 100; stop 102 → risk = 2
+Short 2R target = Entry − 2 × risk
+100 − 2×2 = 96
+Position size = Account risk ÷ Stop distance
+$5 risk ÷ $2 = 2.5 units
+
+
+Critical gate  A mathematically correct 2R target is invalid if strong support/resistance lies before it. Either improve the entry without shrinking the structural stop, select a different target/setup, or skip.
+
+
+Include estimated entry and exit fees when evaluating net expectancy.
+At 2R, a strategy can be profitable below a 50% win rate, but only if losses stay near −1R and winners are actually allowed to reach target.
+Do not cut every winner at +0.5R while accepting full −1R losses; that destroys the planned payoff distribution.
+8. Position sizing and capital protection
+Choose a fixed percentage of current account equity. Beginners commonly use 0.25%–0.5% per trade while learning; the exact level must be small enough that a losing streak does not change behavior.
+Control
+Practice rule
+Risk per trade
+0.25%–0.5% during learning; never increase because confidence feels high
+Daily loss limit
+Stop after 2–3 full-risk losses or a predefined equity percentage
+Correlated positions
+Treat highly correlated trades as one combined risk
+Leverage
+Changes margin, not market risk; size from stop distance first
+Drawdown response
+Reduce size; review execution; do not double risk to recover
+
+
+Example  $500 account × 0.5% = $2.50 maximum planned loss. If the BTC stop is $1,000 away, quantity = $2.50 ÷ $1,000 = 0.0025 BTC before fees.
+
+
+9. Drawing and forecasting positions
+
+Figure 3. Long-position geometry.
+
+Figure 4. Short-position geometry.
+Chart drawing order
+Mark higher-timeframe support/resistance as narrow zones.
+Mark the latest meaningful swing high and swing low.
+Draw the entry at the confirmation close or planned retest price.
+Place the stop at structural invalidation with a small buffer.
+Place the target at the next realistic objective or measured move.
+Read the position tool’s reward:risk. Require at least 2.00.
+Check that no opposing level blocks the target. If blocked, skip—not force.
+Record the screenshot before clicking replay forward.
+Long forecast checklist
+Higher-timeframe trend is up or reversal structure is confirmed.
+Support is beneath entry and has been defended.
+Confirmation closes bullish at the level.
+Stop is below invalidation; target is above entry; 2R space is realistic.
+Short forecast checklist
+Higher-timeframe trend is down or reversal structure is confirmed.
+Resistance is above entry and has been defended.
+Confirmation closes bearish at the level.
+Stop is above invalidation; target is below entry; 2R space is realistic.
+10. Trade management
+Management rules must be chosen before entry. Constant improvisation makes backtesting meaningless.
+Default training model: full stop or full target. It creates clean data.
+Move to breakeven only when the written plan defines a structural reason—not merely because price reached an arbitrary profit.
+Partial exits reduce variance but also reduce average R. Test them as a separate strategy.
+Do not add to a losing position. Adding to winners is advanced and requires a total-risk cap.
+If both stop and target fall inside one replay candle, lower-timeframe data is required; otherwise record the conservative assumption.
+11. Journal and review
+Record decisions, not just profit. A useful journal allows another person to reconstruct the trade without hindsight.
+Field
+What to record
+Context
+Trend/range, key zones, EMA/volume only if actually used
+Signal
+Exact closed candle and what it confirmed
+Entry/stop/target
+Prices and structural reasons
+Reward:risk
+Displayed planned ratio and net ratio after fees if available
+Confidence
+Consistent percentage scale; never change it after seeing outcome
+Outcome
+Stop/target/manual exit, gross and net P&L, R result
+Process grade
+A/B/C based on rule adherence—not win/loss
+Lesson
+One specific repeat/avoid action
+
+
+Review metrics
+Win rate = winners ÷ total closed trades.
+Average win and average loss in R.
+Expectancy = (win rate × average win) − (loss rate × average loss).
+Maximum drawdown and longest losing streak.
+Rule-adherence rate and results by setup type, direction, timeframe and market regime.
+Appendix A. Pre-trade checklist
+☐  Higher-timeframe regime identified
+☐  Current price location identified
+☐  Support/resistance zones marked
+☐  Setup model named
+☐  Confirmation candle closed
+☐  Entry is not chased
+☐  Structural invalidation is clear
+☐  Stop includes sensible buffer
+☐  Realistic target exists
+☐  Displayed reward:risk ≥ 2.00
+☐  Position size matches fixed account risk
+☐  Fees and event risk considered
+☐  Forecast screenshot saved
+☐  Emotion is neutral enough to execute
+Appendix B. Post-trade checklist
+☐  Exit reason recorded exactly
+☐  Gross/net P&L and R recorded
+☐  Screenshot captured after closure
+☐  Confidence preserved from entry
+☐  Process grade assigned
+☐  No hindsight edits to the original rationale
+☐  One lesson written
+☐  Stop trading if daily loss limit is reached
+Appendix C. Candle glossary
+Term
+Useful meaning
+Misuse to avoid
+Engulfing body
+Strong close that overtakes the prior real body at a level
+Trading it anywhere without context
+Pin/rejection bar
+Long wick rejects one side and closes away from it
+Assuming every long wick reverses trend
+Inside bar
+Compression within prior range; potential expansion setup
+Guessing direction before breakout
+Doji
+Balance/indecision
+Treating it as automatic reversal
+Breakout candle
+Closes beyond a defined zone
+Using a wick-only break as confirmation
+
+
+Appendix D. A 30-session practice routine
+Sessions 1–5: mark structure and zones only; no trades.
+Sessions 6–10: label confirming candles and retests; record why signals fail.
+Sessions 11–15: forecast entries/stops/targets; reject every setup below realistic 2R.
+Sessions 16–25: execute one fixed setup model with 0.5% simulated risk.
+Sessions 26–30: calculate expectancy, drawdown and rule adherence; change only one rule at a time.
+Graduation standard  Do not move to live trading because of a few wins. Require a meaningful replay sample, positive expectancy after fees, high rule adherence, and losses small enough that execution remains calm.
+
+
+
+Required response schema:
+{
+  "direction": "WAIT" | "LONG" | "SHORT",
+  "entry_price": number | null,
+  "stop_price": number | null,
+  "target_price": number | null,
+  "confidence": number from 0 to 100,
+  "rationale": "concise structural explanation",
+  "signal_candle_utc": "ISO-8601 timestamp of the final supplied candle"
+}
+
+For WAIT, price fields must be null. For LONG: stop < entry < target. For SHORT:
+target < entry < stop. Never provide lifecycle/accounting fields such as trade
+ID, quantity, fees, PnL, status, exit reason, or balance; the bot computes them.

@@ -21,8 +21,25 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _interval_seconds(interval: str) -> int:
+    value = interval.strip().lower()
+    if len(value) < 2 or not value[:-1].isdigit() or value[-1] not in {"m", "h"}:
+        raise ValueError("TRADE_INTERVAL must use minutes or hours, for example 15m or 1h")
+    multiplier = 60 if value[-1] == "m" else 3600
+    seconds = int(value[:-1]) * multiplier
+    if seconds <= 0:
+        raise ValueError("TRADE_INTERVAL must be positive")
+    return seconds
+
+
 @dataclass(frozen=True)
 class Settings:
+    decision_mode: str
+    log_external_responses: bool
+    llm_endpoint_url: str
+    llm_timeout_seconds: int
+    llm_min_confidence: float
+    llm_max_entry_deviation_bps: float
     strategy_variant: str
     symbol: str
     interval: str
@@ -72,6 +89,9 @@ class Settings:
 
     @classmethod
     def from_env(cls):
+        decision_mode = os.getenv("DECISION_MODE", "llm").strip().lower()
+        if decision_mode not in {"deterministic", "llm"}:
+            raise ValueError("DECISION_MODE must be deterministic or llm")
         variant = os.getenv("STRATEGY_VARIANT", "breakout_retest").strip().lower()
         if variant not in {"breakout_retest", "ema_pullback"}:
             raise ValueError("STRATEGY_VARIANT must be breakout_retest or ema_pullback")
@@ -89,14 +109,27 @@ class Settings:
         level = os.getenv("LOG_LEVEL", "INFO").upper()
         if level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
             raise ValueError("LOG_LEVEL is invalid")
+        interval = os.getenv("TRADE_INTERVAL", "15m").strip().lower()
+        poll_seconds = max(5, _interval_seconds(interval) // 3)
         return cls(
+            decision_mode=decision_mode,
+            log_external_responses=_bool("LOG_EXTERNAL_RESPONSES", True),
+            llm_endpoint_url=os.getenv(
+                "LLM_ENDPOINT_URL",
+                "https://63aghx6yiwuo5m3hwlxxsywwb40lwpyg.lambda-url.us-east-1.on.aws/",
+            ).strip(),
+            llm_timeout_seconds=_int("LLM_TIMEOUT_SECONDS", 60, 1),
+            llm_min_confidence=_float("LLM_MIN_CONFIDENCE", 70, 0, 100),
+            llm_max_entry_deviation_bps=_float(
+                "LLM_MAX_ENTRY_DEVIATION_BPS", 20, 0, 1000
+            ),
             strategy_variant=variant,
             symbol=symbol,
-            interval=os.getenv("TRADE_INTERVAL", "15m"),
+            interval=interval,
             trend_interval=os.getenv("TREND_INTERVAL", "1h"),
             context_interval=os.getenv("CONTEXT_INTERVAL", "4h"),
             candle_limit=_int("CANDLE_LIMIT", 300, 100),
-            poll_seconds=_int("POLL_SECONDS", 10, 5),
+            poll_seconds=poll_seconds,
             max_consecutive_errors=_int("MAX_CONSECUTIVE_ERRORS", 20, 1),
             ema_fast=fast,
             ema_slow=slow,

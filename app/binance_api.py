@@ -1,5 +1,7 @@
 import hashlib
 import hmac
+import json
+import logging
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
@@ -10,12 +12,19 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 
+LOG = logging.getLogger("btc_pullback_trader.binance")
+
+
 class BinanceFuturesClient:
-    def __init__(self, base_url: str, timeout: int, api_key: str = "", secret_key: str = ""):
+    def __init__(
+        self, base_url: str, timeout: int, api_key: str = "", secret_key: str = "",
+        log_responses: bool = True,
+    ):
         self.base_url = base_url
         self.timeout = timeout
         self.api_key = api_key
         self.secret_key = secret_key
+        self.log_responses = log_responses
         self.session = requests.Session()
         retry = Retry(
             total=3,
@@ -34,7 +43,15 @@ class BinanceFuturesClient:
             f"{self.base_url}{path}", params=params or {}, timeout=self.timeout
         )
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        # Kline bodies contain 200 candles and are intentionally hidden after
+        # confirming the Binance payload during development.
+        if self.log_responses and path != "/fapi/v1/klines":
+            LOG.info(
+                "BINANCE RESPONSE path=%s params=%s body=%s",
+                path, params or {}, json.dumps(payload, separators=(",", ":")),
+            )
+        return payload
 
     def _signed_get(self, path: str, params=None):
         if not self.api_key or not self.secret_key:
@@ -52,7 +69,13 @@ class BinanceFuturesClient:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if self.log_responses:
+            LOG.info(
+                "BINANCE AUTHENTICATED RESPONSE path=%s body=%s",
+                path, json.dumps(payload, separators=(",", ":")),
+            )
+        return payload
 
     def klines(self, symbol: str, interval: str, limit: int) -> pd.DataFrame:
         rows = self._get(
