@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -32,6 +33,22 @@ def _interval_seconds(interval: str) -> int:
     return seconds
 
 
+def seconds_until_candle_request(
+    last_candle_time: str | None, interval: str, close_delay_seconds: int,
+    now: datetime | None = None,
+) -> float:
+    if not last_candle_time:
+        return 0.0
+    current = now or datetime.now(timezone.utc)
+    last_close = datetime.fromisoformat(last_candle_time)
+    if last_close.tzinfo is None:
+        last_close = last_close.replace(tzinfo=timezone.utc)
+    request_at = last_close + timedelta(
+        seconds=_interval_seconds(interval) + close_delay_seconds
+    )
+    return max(0.0, (request_at - current).total_seconds())
+
+
 @dataclass(frozen=True)
 class Settings:
     decision_mode: str
@@ -46,7 +63,8 @@ class Settings:
     trend_interval: str
     context_interval: str
     candle_limit: int
-    poll_seconds: int
+    candle_close_delay_seconds: int
+    position_poll_seconds: int
     max_consecutive_errors: int
     ema_fast: int
     ema_slow: int
@@ -110,7 +128,6 @@ class Settings:
         if level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
             raise ValueError("LOG_LEVEL is invalid")
         interval = os.getenv("TRADE_INTERVAL", "15m").strip().lower()
-        poll_seconds = max(5, _interval_seconds(interval) // 5)
         return cls(
             decision_mode=decision_mode,
             log_external_responses=_bool("LOG_EXTERNAL_RESPONSES", True),
@@ -129,7 +146,8 @@ class Settings:
             trend_interval=os.getenv("TREND_INTERVAL", "1h"),
             context_interval=os.getenv("CONTEXT_INTERVAL", "4h"),
             candle_limit=_int("CANDLE_LIMIT", 300, 100),
-            poll_seconds=poll_seconds,
+            candle_close_delay_seconds=_int("CANDLE_CLOSE_DELAY_SECONDS", 20, 0),
+            position_poll_seconds=_int("POSITION_POLL_SECONDS", 10, 5),
             max_consecutive_errors=_int("MAX_CONSECUTIVE_ERRORS", 20, 1),
             ema_fast=fast,
             ema_slow=slow,

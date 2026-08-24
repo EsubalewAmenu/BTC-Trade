@@ -7,7 +7,7 @@ from binance_api import BinanceFuturesClient
 from csv_ledger import CsvLedger
 from llm_decision import request_decision, wait_analysis
 from paper_engine import PaperEngine
-from settings import Settings
+from settings import Settings, seconds_until_candle_request
 from strategy import Signal, analyze, decide
 
 
@@ -48,6 +48,20 @@ def main():
     consecutive_errors = 0
     while RUNNING:
         try:
+            if not engine.position:
+                delay = seconds_until_candle_request(
+                    engine.state["last_decision_candle"], config.interval,
+                    config.candle_close_delay_seconds,
+                )
+                if delay > 0:
+                    heartbeat.touch()
+                    LOG.info(
+                        "NEXT CANDLE REQUEST in %.1f seconds (close + %ds)",
+                        delay, config.candle_close_delay_seconds,
+                    )
+                    time.sleep(delay)
+                    if not RUNNING:
+                        break
             price = client.mark_price(config.symbol)
             result = engine.check_exit(price)
             if result:
@@ -65,7 +79,7 @@ def main():
                         )
                         heartbeat.touch()
                         consecutive_errors = 0
-                        time.sleep(config.poll_seconds)
+                        time.sleep(config.candle_close_delay_seconds)
                         continue
                     try:
                         decision, analysis = request_decision(candles, config)
@@ -100,7 +114,8 @@ def main():
             if consecutive_errors >= config.max_consecutive_errors:
                 LOG.critical("Sustained failures detected; exiting so Docker can restart the bot")
                 return 1
-        time.sleep(config.poll_seconds)
+        if engine.position:
+            time.sleep(config.position_poll_seconds)
     LOG.info("Stopped")
     return 0
 
