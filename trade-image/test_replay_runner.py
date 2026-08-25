@@ -8,6 +8,7 @@ from replay_runner import (
     cached_forward_ready,
     is_forward_ready,
     is_retryable_gemini_error,
+    gemini_retry_delay,
     signal_row,
 )
 
@@ -55,6 +56,10 @@ class ReplayRunnerTests(unittest.TestCase):
     def test_503_is_retryable_but_validation_is_not(self):
         self.assertTrue(is_retryable_gemini_error(RuntimeError("Gemini HTTP 503: busy")))
         self.assertFalse(is_retryable_gemini_error(ValueError("invalid JSON")))
+
+    def test_uses_gemini_retry_delay_with_safety_margin(self):
+        error = RuntimeError('"retryDelay": "19s" and Please retry in 19.321s')
+        self.assertAlmostEqual(gemini_retry_delay(error, 10), 20.321)
 
     def test_signal_csv_has_header_and_signal(self):
         decision = {

@@ -42,9 +42,11 @@ trade-image/.venv/bin/python trade-image/replay_runner.py --steps 50
 
 On the first run, log in to TradingView, open **Bar Replay**, and select the starting candle. Leave
 the Replay Forward control enabled. The runner detects it and begins automatically; no Enter press
-is needed. Results, raw Gemini responses, and screenshots are grouped in a timestamped folder under
+is needed. It waits three minutes after the first detection so TradingView can finish loading its
+initial candle history. Results, raw Gemini responses, and screenshots are grouped in a timestamped folder under
 `trade-image/runs/`. Screenshots are retained under each run's `screenshots/` folder. Transient
-Gemini 429/5xx failures are retried up to three total attempts with exponential backoff.
+Gemini 429/5xx failures are retried up to three total attempts with exponential backoff, while also
+honoring a longer retry delay returned by Gemini.
 
 LONG and SHORT recommendations are appended to the cumulative `trade-image/signals.csv` and to a
 run-specific `signals.csv`. WAIT decisions remain available in `decisions.jsonl` but are not added

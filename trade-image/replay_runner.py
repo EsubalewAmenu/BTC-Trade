@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -161,6 +162,17 @@ def is_retryable_gemini_error(exc: Exception) -> bool:
     ) or "Gemini request failed" in message
 
 
+def gemini_retry_delay(exc: Exception, fallback: float) -> float:
+    """Honor retry timing returned by Gemini, with a small safety margin."""
+    message = str(exc)
+    matches = re.findall(
+        r'(?:retryDelay["\']?\s*:\s*["\']?|retry in\s+)([0-9]+(?:\.[0-9]+)?)s',
+        message,
+        flags=re.IGNORECASE,
+    )
+    return max([fallback, *(float(value) + 1.0 for value in matches)])
+
+
 def analyze_with_retry(image_path: Path, args):
     for attempt in range(1, args.gemini_attempts + 1):
         try:
@@ -168,7 +180,7 @@ def analyze_with_retry(image_path: Path, args):
         except Exception as exc:
             if attempt >= args.gemini_attempts or not is_retryable_gemini_error(exc):
                 raise
-            delay = args.retry_delay * (2 ** (attempt - 1))
+            delay = gemini_retry_delay(exc, args.retry_delay * (2 ** (attempt - 1)))
             print(
                 f"Gemini attempt {attempt}/{args.gemini_attempts} failed: {exc}. "
                 f"Retrying in {delay:.1f}s...",
@@ -242,6 +254,13 @@ def run(args) -> int:
         # Keep this WebElement. TradingView removes the button's title after it
         # displays the first tooltip, although the element itself remains valid.
         forward = wait_for_replay(driver, args.setup_timeout)
+        if args.initial_load_wait:
+            print(
+                f"Replay Forward detected. Waiting {args.initial_load_wait:.0f}s for the initial "
+                "chart history to finish loading...",
+                flush=True,
+            )
+            time.sleep(args.initial_load_wait)
 
         decisions_path = run_dir / "decisions.jsonl"
         for step in range(1, args.steps + 1):
@@ -308,6 +327,7 @@ def main() -> int:
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--render-wait", type=float, default=2.0)
+    parser.add_argument("--initial-load-wait", type=float, default=180.0)
     parser.add_argument("--setup-timeout", type=int, default=1800)
     parser.add_argument("--forward-timeout", type=int, default=30)
     parser.add_argument("--gemini-timeout", type=int, default=120)
@@ -321,7 +341,10 @@ def main() -> int:
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--keep-browser-open", action="store_true")
     args = parser.parse_args()
-    if args.steps < 1 or args.render_wait < 0 or args.gemini_attempts < 1 or args.retry_delay < 0:
+    if (
+        args.steps < 1 or args.render_wait < 0 or args.initial_load_wait < 0
+        or args.gemini_attempts < 1 or args.retry_delay < 0
+    ):
         parser.error("steps/attempts must be positive and wait/delay values cannot be negative")
     load_env(ROOT / ".env")
     signal.signal(signal.SIGINT, request_stop)
