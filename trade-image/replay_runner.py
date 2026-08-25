@@ -323,7 +323,6 @@ def run(args) -> int:
             )
             time.sleep(args.initial_load_wait)
 
-        decisions_path = run_dir / "decisions.jsonl"
         initialize_trade_csv(run_dir / "trades.csv")
         initialize_trade_csv(BASE_DIR / "trades.csv")
         open_trade = None
@@ -343,13 +342,13 @@ def run(args) -> int:
             if not driver.save_screenshot(str(image_path)):
                 raise RuntimeError(f"TradingView screenshot failed at step {step}")
 
-            print(f"STEP {step}: screenshot saved; requesting Gemini...", flush=True)
+            print(f"STEP {step}: screenshot captured; requesting Gemini...", flush=True)
+            position_was_open = open_trade is not None
             try:
-                decision, raw = analyze_with_retry(image_path, args, open_trade)
+                decision, _raw = analyze_with_retry(image_path, args, open_trade)
             except Exception as exc:
-                error = {"step": step, "screenshot": str(image_path), "error": str(exc)}
-                with decisions_path.open("a", encoding="utf-8") as stream:
-                    stream.write(json.dumps(error) + "\n")
+                if not position_was_open:
+                    image_path.unlink(missing_ok=True)
                 print(f"STEP {step}: Gemini error: {exc}", file=sys.stderr, flush=True)
                 if not args.continue_on_error:
                     return 1
@@ -361,10 +360,12 @@ def run(args) -> int:
                 "screenshot": str(image_path),
                 "decision": decision,
             }
-            save_json(run_dir / f"decision_{step:05d}.json", record)
-            save_json(run_dir / f"raw_{step:05d}.json", raw)
-            with decisions_path.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(record) + "\n")
+            keep_artifacts = position_was_open or decision["direction"].upper() in {"LONG", "SHORT"}
+            if keep_artifacts:
+                save_json(run_dir / f"decision_{step:05d}.json", record)
+            else:
+                image_path.unlink(missing_ok=True)
+                print(f"STEP {step}: no-position WAIT artifacts discarded", flush=True)
 
             closed_this_candle = False
             if open_trade:
