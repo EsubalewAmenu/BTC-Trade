@@ -1,21 +1,8 @@
 {
   "direction": "WAIT",
-  "confidence": 85,
   "entry_price": null,
   "stop_price": null,
   "target_price": null,
-  "reward_risk": null,
-  "trend": "DOWN",
-  "ema50_relationship": "BELOW",
-  "volume_observation": "Volume expanded on the sharp drop in mid-August and has generally contracted during recent range-bound consolidation.",
-  "pullback_evidence": [
-    "Price attempted a recovery rally toward the 50 EMA (~27,500) in late September but was rejected.",
-    "Price is currently hanging in the middle of the 25,000 to 27,500 consolidation zone, far from actionable boundary zones."
-  ],
-  "invalidation_reason": "A strong break and close above the 50 EMA and 27,500 lower high would invalidate the short bias, while a breakdown below 25,000 would signal downtrend continuation.",
-  "rationale": "The broader market structure has been bearish since peaking near 31,800 in July, with price trading below the 50 EMA. Although price rejected the 50 EMA recently, current price (26,297) is sitting in the middle of a established range between 25,000 support and 27,500 resistance. Entering here offers poor location and unclear risk-to-reward. A wait stance is warranted until a clean retest occurs at major support or resistance boundaries.",
-  "limitations": [
-    "Candle timeframe is not explicitly stated on screen (inferred as daily from date axis)",
-    "Higher timeframe trend and key weekly levels are not visible"
-  ]
+  "confidence": 85,
+  "rationale": "Price is extremely extended following a massive vertical expansion candle (+10.26%) with a high wick to 34,741. Entering here would be chasing far from structural support, making a realistic 2R trade with a safe structural stop unfeasible. Per the field guide, wait for a pullback and retest of former resistance."
 }

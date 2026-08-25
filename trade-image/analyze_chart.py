@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_IMAGE = Path(__file__).with_name("screenshot") / "BTCUSD_2026-08-25_08-51-32.png"
+DEFAULT_IMAGE = Path(__file__).with_name("screenshot") / "BTCUSDT_2026-08-25_09-51-56.png"
 DEFAULT_CONTEXT = Path(__file__).with_name("system_context.txt")
 
 
