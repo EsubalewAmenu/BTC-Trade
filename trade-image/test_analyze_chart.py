@@ -20,12 +20,14 @@ class ChartAnalysisTests(unittest.TestCase):
             MODULE.validate_result({
                 "direction": "WAIT", "confidence": 50, "entry_price": 100,
                 "stop_price": None, "target_price": None,
+                "candle_high": 105, "candle_low": 95, "candle_close": 100,
             })
 
     def test_valid_two_r_long(self):
         MODULE.validate_result({
             "direction": "LONG", "confidence": 80, "entry_price": 100,
             "stop_price": 98, "target_price": 104,
+            "candle_high": 101, "candle_low": 99, "candle_close": 100,
         })
 
     def test_rejects_sub_two_r_short(self):
@@ -33,6 +35,7 @@ class ChartAnalysisTests(unittest.TestCase):
             MODULE.validate_result({
                 "direction": "SHORT", "confidence": 80, "entry_price": 100,
                 "stop_price": 102, "target_price": 97,
+                "candle_high": 101, "candle_low": 99, "candle_close": 100,
             })
 
 

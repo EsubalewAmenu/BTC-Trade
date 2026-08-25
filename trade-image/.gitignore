@@ -2,4 +2,5 @@
 chrome-profile/
 runs/
 signals.csv
+trades.csv
 __pycache__/

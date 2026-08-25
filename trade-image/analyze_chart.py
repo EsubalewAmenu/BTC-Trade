@@ -6,6 +6,7 @@ import mimetypes
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -57,6 +58,12 @@ def validate_result(result: dict) -> None:
     confidence = float(result.get("confidence", -1))
     if not 0 <= confidence <= 100:
         raise ValueError("confidence must be between 0 and 100")
+    candle_values = [result.get(name) for name in ("candle_high", "candle_low", "candle_close")]
+    if any(value is None for value in candle_values):
+        raise ValueError("candle_high, candle_low, and candle_close are required")
+    high, low, close = map(float, candle_values)
+    if high < low or not low <= close <= high:
+        raise ValueError("invalid current candle high/low/close geometry")
     prices = [result.get(name) for name in ("entry_price", "stop_price", "target_price")]
     if direction == "WAIT":
         if any(value is not None for value in prices):
@@ -73,7 +80,10 @@ def validate_result(result: dict) -> None:
         raise ValueError(f"reward-to-risk is below 2.0: {calculated_rr:.3f}")
 
 
-def analyze(image_path: Path, context_path: Path, model: str, timeout: int) -> tuple[dict, dict]:
+def analyze(
+    image_path: Path, context_path: Path, model: str, timeout: int,
+    open_trade: Optional[dict] = None,
+) -> tuple[dict, dict]:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise ValueError("GEMINI_API_KEY is missing from the environment or root .env")
@@ -86,8 +96,15 @@ def analyze(image_path: Path, context_path: Path, model: str, timeout: int) -> t
     user_prompt = (
         "Analyze this chart screenshot under the field guide. First inspect visible "
         "structure, EMA50, volume, pullback location, confirmation, invalidation, "
-        "and realistic 2R space. Return only the required JSON object."
+        "and realistic 2R space. Read candle_high, candle_low, candle_close and "
+        "candle_utc from the rightmost fully revealed replay candle and visible OHLC legend. "
+        "Return only the required JSON object."
     )
+    if open_trade:
+        user_prompt += (
+            " An existing paper position is open, so direction must be WAIT and no new signal "
+            f"may be proposed until it closes. Open trade: {json.dumps(open_trade)}"
+        )
     request_body = {
         "systemInstruction": {"parts": [{"text": context_path.read_text(encoding="utf-8")}]},
         "contents": [{

@@ -52,6 +52,12 @@ LONG and SHORT recommendations are appended to the cumulative `trade-image/signa
 run-specific `signals.csv`. WAIT decisions remain available in `decisions.jsonl` but are not added
 to the signal CSV.
 
+Only one paper position can be open at a time. Future candle high/low observations are checked
+against its fixed stop and target; if both are touched inside one replay candle, the stop is counted
+first. Completed trades and PnL are written to cumulative `trade-image/trades.csv` and the run's
+`trades.csv`. Defaults are 1,000 USDT starting balance, 0.5% account risk per trade, and 0.06% per-side
+fees. Override them with `--initial-balance`, `--risk-percent`, and `--fee-rate`.
+
 Useful options:
 
 ```bash

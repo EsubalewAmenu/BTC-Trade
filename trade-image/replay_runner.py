@@ -30,6 +30,13 @@ SIGNAL_FIELDS = (
     "Target Price", "Reward Risk", "Confidence", "Rationale", "Screenshot",
     "Run ID", "Step",
 )
+TRADE_FIELDS = (
+    "Trade ID", "Status", "Side", "Opened UTC", "Closed UTC", "Entry Price",
+    "Exit Price", "Quantity BTC", "Notional USDT", "Stop Price", "Target Price",
+    "Entry Fee", "Exit Fee", "Gross PnL", "Net PnL", "R Multiple", "Exit Reason",
+    "Hold Candles", "Confidence", "Rationale", "Entry Screenshot", "Exit Screenshot",
+    "Balance After", "Run ID",
+)
 
 
 def request_stop(_signum=None, _frame=None) -> None:
@@ -173,10 +180,10 @@ def gemini_retry_delay(exc: Exception, fallback: float) -> float:
     return max([fallback, *(float(value) + 1.0 for value in matches)])
 
 
-def analyze_with_retry(image_path: Path, args):
+def analyze_with_retry(image_path: Path, args, open_trade=None):
     for attempt in range(1, args.gemini_attempts + 1):
         try:
-            return analyze(image_path, args.context, args.model, args.gemini_timeout)
+            return analyze(image_path, args.context, args.model, args.gemini_timeout, open_trade)
         except Exception as exc:
             if attempt >= args.gemini_attempts or not is_retryable_gemini_error(exc):
                 raise
@@ -198,6 +205,52 @@ def append_signal_csv(path: Path, row: dict) -> None:
         if needs_header:
             writer.writeheader()
         writer.writerow({field: row.get(field, "") for field in SIGNAL_FIELDS})
+
+
+def append_trade_csv(path: Path, row: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    needs_header = not path.exists() or path.stat().st_size == 0
+    with path.open("a", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=TRADE_FIELDS)
+        if needs_header:
+            writer.writeheader()
+        writer.writerow({field: row.get(field, "") for field in TRADE_FIELDS})
+
+
+def exit_for_candle(trade: dict, high: float, low: float):
+    side, stop, target = trade["side"], trade["stop"], trade["target"]
+    stop_hit = low <= stop if side == "LONG" else high >= stop
+    target_hit = high >= target if side == "LONG" else low <= target
+    if stop_hit:  # Conservative when both occur in one replay candle.
+        return stop, "STOP"
+    if target_hit:
+        return target, "TARGET"
+    return None
+
+
+def close_trade_row(trade: dict, decision: dict, image_path: Path, exit_price: float,
+                    reason: str, balance: float, fee_rate: float) -> tuple[dict, float]:
+    direction = 1 if trade["side"] == "LONG" else -1
+    quantity = trade["quantity"]
+    gross = direction * (exit_price - trade["entry"]) * quantity
+    exit_fee = exit_price * quantity * fee_rate
+    net = gross - trade["entry_fee"] - exit_fee
+    balance_after = balance + net
+    risk_amount = abs(trade["entry"] - trade["stop"]) * quantity
+    row = {
+        "Trade ID": trade["id"], "Status": "CLOSED", "Side": trade["side"],
+        "Opened UTC": trade["opened_utc"], "Closed UTC": decision.get("candle_utc") or datetime.now(timezone.utc).isoformat(),
+        "Entry Price": trade["entry"], "Exit Price": exit_price, "Quantity BTC": f"{quantity:.8f}",
+        "Notional USDT": f"{trade['entry'] * quantity:.2f}", "Stop Price": trade["stop"],
+        "Target Price": trade["target"], "Entry Fee": f"{trade['entry_fee']:.4f}",
+        "Exit Fee": f"{exit_fee:.4f}", "Gross PnL": f"{gross:.4f}", "Net PnL": f"{net:.4f}",
+        "R Multiple": f"{net / risk_amount:.4f}", "Exit Reason": reason,
+        "Hold Candles": trade["hold_candles"], "Confidence": trade["confidence"],
+        "Rationale": trade["rationale"], "Entry Screenshot": trade["screenshot"],
+        "Exit Screenshot": str(image_path.resolve()), "Balance After": f"{balance_after:.4f}",
+        "Run ID": trade["run_id"],
+    }
+    return row, balance_after
 
 
 def signal_row(run_id: str, step: int, captured_utc: str, image_path: Path, decision: dict) -> dict:
@@ -263,6 +316,8 @@ def run(args) -> int:
             time.sleep(args.initial_load_wait)
 
         decisions_path = run_dir / "decisions.jsonl"
+        open_trade = None
+        balance = args.initial_balance
         for step in range(1, args.steps + 1):
             if STOP_REQUESTED:
                 break
@@ -277,7 +332,7 @@ def run(args) -> int:
 
             print(f"STEP {step}: screenshot saved; requesting Gemini...", flush=True)
             try:
-                decision, raw = analyze_with_retry(image_path, args)
+                decision, raw = analyze_with_retry(image_path, args, open_trade)
             except Exception as exc:
                 error = {"step": step, "screenshot": str(image_path), "error": str(exc)}
                 with decisions_path.open("a", encoding="utf-8") as stream:
@@ -298,11 +353,51 @@ def run(args) -> int:
             with decisions_path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(record) + "\n")
 
-            if decision["direction"].upper() in {"LONG", "SHORT"}:
+            closed_this_candle = False
+            if open_trade:
+                open_trade["hold_candles"] += 1
+                outcome = exit_for_candle(
+                    open_trade, float(decision["candle_high"]), float(decision["candle_low"])
+                )
+                if outcome:
+                    exit_price, reason = outcome
+                    trade_row, balance = close_trade_row(
+                        open_trade, decision, image_path, exit_price, reason, balance, args.fee_rate
+                    )
+                    append_trade_csv(run_dir / "trades.csv", trade_row)
+                    append_trade_csv(BASE_DIR / "trades.csv", trade_row)
+                    print(
+                        f"STEP {step}: trade {open_trade['id']} closed by {reason} | "
+                        f"net PnL={trade_row['Net PnL']} USDT | balance={trade_row['Balance After']}",
+                        flush=True,
+                    )
+                    open_trade = None
+                    closed_this_candle = True
+                    (run_dir / "open_trade.json").unlink(missing_ok=True)
+
+            if not open_trade and not closed_this_candle and decision["direction"].upper() in {"LONG", "SHORT"}:
                 row = signal_row(run_id, step, record["captured_utc"], image_path, decision)
                 append_signal_csv(run_dir / "signals.csv", row)
                 append_signal_csv(BASE_DIR / "signals.csv", row)
                 print(f"STEP {step}: signal recorded in {BASE_DIR / 'signals.csv'}", flush=True)
+                entry = float(decision["entry_price"])
+                stop = float(decision["stop_price"])
+                risk_budget = balance * args.risk_percent / 100
+                quantity = risk_budget / abs(entry - stop)
+                open_trade = {
+                    "id": row["Trade ID"], "run_id": run_id, "side": row["Side"],
+                    "opened_utc": decision.get("candle_utc") or record["captured_utc"],
+                    "entry": entry, "stop": stop, "target": float(decision["target_price"]),
+                    "quantity": quantity, "entry_fee": entry * quantity * args.fee_rate,
+                    "confidence": decision["confidence"], "rationale": decision.get("rationale", ""),
+                    "screenshot": str(image_path.resolve()), "hold_candles": 0,
+                }
+                save_json(run_dir / "open_trade.json", open_trade)
+                print(
+                    f"STEP {step}: paper trade opened {open_trade['side']} | qty={quantity:.8f} BTC | "
+                    f"risk={risk_budget:.2f} USDT",
+                    flush=True,
+                )
 
             print(
                 f"STEP {step}: {decision['direction']} | confidence={decision['confidence']} | "
@@ -333,6 +428,9 @@ def main() -> int:
     parser.add_argument("--gemini-timeout", type=int, default=120)
     parser.add_argument("--gemini-attempts", type=int, default=3)
     parser.add_argument("--retry-delay", type=float, default=5.0)
+    parser.add_argument("--initial-balance", type=float, default=1000.0)
+    parser.add_argument("--risk-percent", type=float, default=0.5)
+    parser.add_argument("--fee-rate", type=float, default=0.0006)
     parser.add_argument("--model", default=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"))
     parser.add_argument("--context", type=Path, default=DEFAULT_CONTEXT)
     parser.add_argument("--profile-dir", type=Path, default=BASE_DIR / "chrome-profile")
@@ -343,7 +441,8 @@ def main() -> int:
     args = parser.parse_args()
     if (
         args.steps < 1 or args.render_wait < 0 or args.initial_load_wait < 0
-        or args.gemini_attempts < 1 or args.retry_delay < 0
+        or args.gemini_attempts < 1 or args.retry_delay < 0 or args.initial_balance <= 0
+        or args.risk_percent <= 0 or args.fee_rate < 0
     ):
         parser.error("steps/attempts must be positive and wait/delay values cannot be negative")
     load_env(ROOT / ".env")

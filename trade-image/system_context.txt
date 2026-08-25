@@ -280,4 +280,12 @@ Required response schema:
   "target_price": number | null,
   "confidence": number from 0 to 100,
   "rationale": "concise structural explanation",
+  "candle_high": number from the rightmost fully revealed replay candle,
+  "candle_low": number from the rightmost fully revealed replay candle,
+  "candle_close": number from the rightmost fully revealed replay candle,
+  "candle_utc": "visible candle timestamp/date, or null only when unreadable"
 }
+
+The candle OHLC fields are observations, not forecasts. Read them from the visible TradingView
+OHLC legend for the rightmost fully revealed replay candle. When the user prompt supplies an open
+trade, return WAIT with null entry/stop/target until the application reports that trade closed.

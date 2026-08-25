@@ -6,6 +6,7 @@ from replay_runner import (
     FORWARD_SELECTORS,
     append_signal_csv,
     cached_forward_ready,
+    exit_for_candle,
     is_forward_ready,
     is_retryable_gemini_error,
     gemini_retry_delay,
@@ -73,6 +74,22 @@ class ReplayRunnerTests(unittest.TestCase):
             content = path.read_text(encoding="utf-8")
         self.assertIn("Trade ID,Status,Side", content)
         self.assertIn("run-00002,SIGNAL,LONG", content)
+
+    def test_long_target_and_short_stop(self):
+        self.assertEqual(
+            exit_for_candle({"side": "LONG", "stop": 90, "target": 120}, 121, 100),
+            (120, "TARGET"),
+        )
+        self.assertEqual(
+            exit_for_candle({"side": "SHORT", "stop": 110, "target": 80}, 111, 90),
+            (110, "STOP"),
+        )
+
+    def test_both_levels_hit_uses_conservative_stop(self):
+        self.assertEqual(
+            exit_for_candle({"side": "LONG", "stop": 90, "target": 120}, 125, 85),
+            (90, "STOP"),
+        )
 
 
 if __name__ == "__main__":
