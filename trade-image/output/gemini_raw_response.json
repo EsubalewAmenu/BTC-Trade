@@ -1,0 +1,36 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\n  \"direction\": \"WAIT\",\n  \"confidence\": 85,\n  \"entry_price\": null,\n  \"stop_price\": null,\n  \"target_price\": null,\n  \"reward_risk\": null,\n  \"trend\": \"DOWN\",\n  \"ema50_relationship\": \"BELOW\",\n  \"volume_observation\": \"Volume expanded on the sharp drop in mid-August and has generally contracted during recent range-bound consolidation.\",\n  \"pullback_evidence\": [\n    \"Price attempted a recovery rally toward the 50 EMA (~27,500) in late September but was rejected.\",\n    \"Price is currently hanging in the middle of the 25,000 to 27,500 consolidation zone, far from actionable boundary zones.\"\n  ],\n  \"invalidation_reason\": \"A strong break and close above the 50 EMA and 27,500 lower high would invalidate the short bias, while a breakdown below 25,000 would signal downtrend continuation.\",\n  \"rationale\": \"The broader market structure has been bearish since peaking near 31,800 in July, with price trading below the 50 EMA. Although price rejected the 50 EMA recently, current price (26,297) is sitting in the middle of a established range between 25,000 support and 27,500 resistance. Entering here offers poor location and unclear risk-to-reward. A wait stance is warranted until a clean retest occurs at major support or resistance boundaries.\",\n  \"limitations\": [\n    \"Candle timeframe is not explicitly stated on screen (inferred as daily from date axis)\",\n    \"Higher timeframe trend and key weekly levels are not visible\"\n  ]\n}",
+            "thoughtSignature": "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"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1776,
+    "candidatesTokenCount": 397,
+    "totalTokenCount": 3153,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 696
+      },
+      {
+        "modality": "IMAGE",
+        "tokenCount": 1080
+      }
+    ],
+    "thoughtsTokenCount": 980,
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.6-flash",
+  "responseId": "sTWNasHeCaKjkdUPzcXw6AU"
+}
