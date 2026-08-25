@@ -72,6 +72,20 @@ class LlmDecisionTests(unittest.TestCase):
             request_decision(candles(), config())
 
     @patch("llm_decision.post_json")
+    def test_incorrect_llm_signal_time_is_ignored(self, post):
+        frame = candles()
+        post.return_value = {
+            "direction": "WAIT", "entry_price": None, "stop_price": None,
+            "target_price": None, "confidence": 60, "rationale": "no setup",
+            "signal_candle_utc": "2025-04-24T00:05:00Z",
+        }
+        decision, analysis = request_decision(frame, config())
+        self.assertEqual(decision.action, "WAIT")
+        self.assertEqual(
+            pd.Timestamp(analysis.candle_time), pd.Timestamp(frame.iloc[-1].close_time)
+        )
+
+    @patch("llm_decision.post_json")
     def test_sub_two_r_signal_is_rejected(self, post):
         post.return_value = {
             "direction": "SHORT", "entry_price": 120, "stop_price": 121,

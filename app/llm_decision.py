@@ -123,7 +123,10 @@ def request_decision(candles: pd.DataFrame, config) -> tuple[Decision, LlmAnalys
     candle_time = pd.Timestamp(final.close_time).isoformat()
     supplied_time = payload.get("signal_candle_utc")
     if supplied_time and pd.Timestamp(supplied_time) != pd.Timestamp(final.close_time):
-        raise ValueError("LLM signal candle does not match the latest supplied candle")
+        LOG.warning(
+            "LLM signal_candle_utc ignored: returned=%s authoritative=%s",
+            supplied_time, candle_time,
+        )
     entry = stop = target = None
     if direction != Signal.WAIT.value:
         entry = float(payload["entry_price"])

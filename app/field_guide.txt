@@ -299,9 +299,10 @@ Required response schema:
   "target_price": number | null,
   "confidence": number from 0 to 100,
   "rationale": "concise structural explanation",
-  "signal_candle_utc": "ISO-8601 timestamp of the final supplied candle"
+  "signal_candle_utc": "optional; the bot uses the final supplied candle timestamp"
 }
 
 For WAIT, price fields must be null. For LONG: stop < entry < target. For SHORT:
 target < entry < stop. Never provide lifecycle/accounting fields such as trade
-ID, quantity, fees, PnL, status, exit reason, or balance; the bot computes them.
+ID, signal time, quantity, fees, PnL, status, exit reason, or balance; the bot
+computes them.

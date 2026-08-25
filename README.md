@@ -50,7 +50,7 @@ The accepted LLM response is:
   "target_price": null,
   "confidence": 0,
   "rationale": "structural explanation",
-  "signal_candle_utc": "2026-08-24T12:14:59.999000+00:00"
+  "signal_candle_utc": "optional; informational only"
 }
 ```
 
