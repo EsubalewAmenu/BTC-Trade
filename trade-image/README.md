@@ -51,7 +51,8 @@ honoring a longer retry delay returned by Gemini.
 To minimize disk usage, a no-position WAIT screenshot is deleted immediately after analysis and no
 decision file is written for it. The entry signal screenshot and every screenshot/decision from the
 open position through its exit are retained. Raw Gemini responses and the duplicate decisions JSONL
-file are not stored.
+file are not stored. One rolling `last_screenshot.png` is overwritten on every replay step, ensuring
+the final visible chart is preserved if the run finishes or encounters an error.
 
 LONG and SHORT recommendations are appended to the cumulative `trade-image/signals.csv` and to a
 run-specific `signals.csv`. No-position WAIT decisions are discarded and are not added to the

@@ -6,6 +6,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import signal
 import sys
 import time
@@ -341,6 +342,9 @@ def run(args) -> int:
             image_path = screenshot_dir / f"step_{step:05d}.png"
             if not driver.save_screenshot(str(image_path)):
                 raise RuntimeError(f"TradingView screenshot failed at step {step}")
+            # Keep exactly one rolling chart even when this step's WAIT artifacts
+            # are discarded. This also preserves the chart for fatal errors.
+            shutil.copyfile(image_path, run_dir / "last_screenshot.png")
 
             print(f"STEP {step}: screenshot captured; requesting Gemini...", flush=True)
             position_was_open = open_trade is not None

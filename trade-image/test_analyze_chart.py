@@ -38,6 +38,13 @@ class ChartAnalysisTests(unittest.TestCase):
                 "candle_high": 101, "candle_low": 99, "candle_close": 100,
             })
 
+    def test_accepts_tiny_chart_rounding_difference_at_two_r(self):
+        MODULE.validate_result({
+            "direction": "LONG", "confidence": 80, "entry_price": 100,
+            "stop_price": 90, "target_price": 119.995,
+            "candle_high": 101, "candle_low": 99, "candle_close": 100,
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

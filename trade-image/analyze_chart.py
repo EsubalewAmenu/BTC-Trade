@@ -76,8 +76,10 @@ def validate_result(result: dict) -> None:
     if not valid:
         raise ValueError("invalid stop/entry/target geometry")
     calculated_rr = abs(target - entry) / abs(entry - stop)
-    if calculated_rr < 2:
-        raise ValueError(f"reward-to-risk is below 2.0: {calculated_rr:.3f}")
+    # Gemini reads prices from a chart image, so allow a tiny 0.001R display/
+    # floating-point tolerance around an intended 2.000R setup.
+    if calculated_rr < 1.999:
+        raise ValueError(f"reward-to-risk is below 2.0: {calculated_rr:.6f}")
 
 
 def analyze(
