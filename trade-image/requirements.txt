@@ -1,0 +1,2 @@
+# Python 3.9 compatible; includes Selenium Manager for automatic ChromeDriver setup.
+selenium>=4.25,<4.36
