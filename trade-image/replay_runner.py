@@ -2,6 +2,7 @@
 """Advance a TradingView bar replay and analyze each rendered chart with Gemini."""
 
 import argparse
+import csv
 import json
 import os
 import signal
@@ -23,6 +24,11 @@ FORWARD_SELECTORS = (
     "[data-name*='forward']",
 )
 STOP_REQUESTED = False
+SIGNAL_FIELDS = (
+    "Trade ID", "Status", "Side", "Signal UTC", "Entry Price", "Stop Price",
+    "Target Price", "Reward Risk", "Confidence", "Rationale", "Screenshot",
+    "Run ID", "Step",
+)
 
 
 def request_stop(_signum=None, _frame=None) -> None:
@@ -148,6 +154,62 @@ def save_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2), encoding="utf-8")
 
 
+def is_retryable_gemini_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "Gemini HTTP 429" in message or any(
+        f"Gemini HTTP {code}" in message for code in (500, 502, 503, 504)
+    ) or "Gemini request failed" in message
+
+
+def analyze_with_retry(image_path: Path, args):
+    for attempt in range(1, args.gemini_attempts + 1):
+        try:
+            return analyze(image_path, args.context, args.model, args.gemini_timeout)
+        except Exception as exc:
+            if attempt >= args.gemini_attempts or not is_retryable_gemini_error(exc):
+                raise
+            delay = args.retry_delay * (2 ** (attempt - 1))
+            print(
+                f"Gemini attempt {attempt}/{args.gemini_attempts} failed: {exc}. "
+                f"Retrying in {delay:.1f}s...",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(delay)
+
+
+def append_signal_csv(path: Path, row: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    needs_header = not path.exists() or path.stat().st_size == 0
+    with path.open("a", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=SIGNAL_FIELDS)
+        if needs_header:
+            writer.writeheader()
+        writer.writerow({field: row.get(field, "") for field in SIGNAL_FIELDS})
+
+
+def signal_row(run_id: str, step: int, captured_utc: str, image_path: Path, decision: dict) -> dict:
+    entry = float(decision["entry_price"])
+    stop = float(decision["stop_price"])
+    target = float(decision["target_price"])
+    reward_risk = abs(target - entry) / abs(entry - stop)
+    return {
+        "Trade ID": f"{run_id}-{step:05d}",
+        "Status": "SIGNAL",
+        "Side": decision["direction"].upper(),
+        "Signal UTC": captured_utc,
+        "Entry Price": decision["entry_price"],
+        "Stop Price": decision["stop_price"],
+        "Target Price": decision["target_price"],
+        "Reward Risk": f"{reward_risk:.4f}",
+        "Confidence": decision["confidence"],
+        "Rationale": decision.get("rationale", ""),
+        "Screenshot": str(image_path.resolve()),
+        "Run ID": run_id,
+        "Step": step,
+    }
+
+
 def build_driver(profile_dir: Path):
     try:
         from selenium import webdriver
@@ -196,7 +258,7 @@ def run(args) -> int:
 
             print(f"STEP {step}: screenshot saved; requesting Gemini...", flush=True)
             try:
-                decision, raw = analyze(image_path, args.context, args.model, args.gemini_timeout)
+                decision, raw = analyze_with_retry(image_path, args)
             except Exception as exc:
                 error = {"step": step, "screenshot": str(image_path), "error": str(exc)}
                 with decisions_path.open("a", encoding="utf-8") as stream:
@@ -216,6 +278,12 @@ def run(args) -> int:
             save_json(run_dir / f"raw_{step:05d}.json", raw)
             with decisions_path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(record) + "\n")
+
+            if decision["direction"].upper() in {"LONG", "SHORT"}:
+                row = signal_row(run_id, step, record["captured_utc"], image_path, decision)
+                append_signal_csv(run_dir / "signals.csv", row)
+                append_signal_csv(BASE_DIR / "signals.csv", row)
+                print(f"STEP {step}: signal recorded in {BASE_DIR / 'signals.csv'}", flush=True)
 
             print(
                 f"STEP {step}: {decision['direction']} | confidence={decision['confidence']} | "
@@ -243,6 +311,8 @@ def main() -> int:
     parser.add_argument("--setup-timeout", type=int, default=1800)
     parser.add_argument("--forward-timeout", type=int, default=30)
     parser.add_argument("--gemini-timeout", type=int, default=120)
+    parser.add_argument("--gemini-attempts", type=int, default=3)
+    parser.add_argument("--retry-delay", type=float, default=5.0)
     parser.add_argument("--model", default=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"))
     parser.add_argument("--context", type=Path, default=DEFAULT_CONTEXT)
     parser.add_argument("--profile-dir", type=Path, default=BASE_DIR / "chrome-profile")
@@ -251,8 +321,8 @@ def main() -> int:
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--keep-browser-open", action="store_true")
     args = parser.parse_args()
-    if args.steps < 1 or args.render_wait < 0:
-        parser.error("--steps must be positive and --render-wait cannot be negative")
+    if args.steps < 1 or args.render_wait < 0 or args.gemini_attempts < 1 or args.retry_delay < 0:
+        parser.error("steps/attempts must be positive and wait/delay values cannot be negative")
     load_env(ROOT / ".env")
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)

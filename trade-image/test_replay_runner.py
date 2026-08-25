@@ -1,6 +1,15 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from replay_runner import FORWARD_SELECTORS, cached_forward_ready, is_forward_ready
+from replay_runner import (
+    FORWARD_SELECTORS,
+    append_signal_csv,
+    cached_forward_ready,
+    is_forward_ready,
+    is_retryable_gemini_error,
+    signal_row,
+)
 
 
 class FakeElement:
@@ -42,6 +51,23 @@ class ReplayRunnerTests(unittest.TestCase):
 
     def test_stale_cached_forward_requests_rediscovery(self):
         self.assertFalse(cached_forward_ready(StaleElement()))
+
+    def test_503_is_retryable_but_validation_is_not(self):
+        self.assertTrue(is_retryable_gemini_error(RuntimeError("Gemini HTTP 503: busy")))
+        self.assertFalse(is_retryable_gemini_error(ValueError("invalid JSON")))
+
+    def test_signal_csv_has_header_and_signal(self):
+        decision = {
+            "direction": "LONG", "entry_price": 100, "stop_price": 90,
+            "target_price": 120, "confidence": 80, "rationale": "pullback",
+        }
+        row = signal_row("run", 2, "2026-01-01T00:00:00+00:00", Path("chart.png"), decision)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "signals.csv"
+            append_signal_csv(path, row)
+            content = path.read_text(encoding="utf-8")
+        self.assertIn("Trade ID,Status,Side", content)
+        self.assertIn("run-00002,SIGNAL,LONG", content)
 
 
 if __name__ == "__main__":
