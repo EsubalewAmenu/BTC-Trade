@@ -15,7 +15,13 @@ from analyze_chart import DEFAULT_CONTEXT, ROOT, analyze, load_env
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_URL = "https://www.tradingview.com/chart/qmEGf9UB/?symbol=CRYPTO%3ABTCUSD"
-FORWARD_SELECTORS = ("[title='Forward']", "[aria-label='Forward']")
+FORWARD_SELECTORS = (
+    "[title='Forward']",
+    "[title*='Forward']",
+    "[aria-label*='Forward']",
+    "[data-tooltip*='Forward']",
+    "[data-name*='forward']",
+)
 STOP_REQUESTED = False
 
 
@@ -30,14 +36,66 @@ def is_forward_ready(element) -> bool:
     return element.is_displayed() and element.is_enabled() and "isDisabled" not in classes and aria_disabled != "true"
 
 
+def cached_forward_ready(element) -> bool:
+    try:
+        return element is not None and is_forward_ready(element)
+    except Exception:
+        # TradingView occasionally replaces the complete replay toolbar.
+        return False
+
+
 def find_forward(driver):
     from selenium.webdriver.common.by import By
 
+    seen = set()
     for selector in FORWARD_SELECTORS:
         for element in driver.find_elements(By.CSS_SELECTOR, selector):
-            if is_forward_ready(element):
+            if element.id not in seen and is_forward_ready(element):
                 return element
+            seen.add(element.id)
+
+    # TradingView may remove tooltip attributes after the first click. Fall back
+    # to the visible accessible text, then return its nearest clickable ancestor.
+    xpath = (
+        "//*[normalize-space(.)='Forward' or "
+        "contains(translate(@title,'FORWARD','forward'),'forward') or "
+        "contains(translate(@aria-label,'FORWARD','forward'),'forward')]"
+    )
+    for element in driver.find_elements(By.XPATH, xpath):
+        candidates = [element]
+        candidates.extend(element.find_elements(By.XPATH, "ancestor::*[self::button or @role='button'][1]"))
+        for candidate in candidates:
+            if candidate.id not in seen and is_forward_ready(candidate):
+                return candidate
+            seen.add(candidate.id)
     return None
+
+
+def forward_diagnostics(driver) -> str:
+    """Return safe control metadata without dumping the full TradingView page."""
+    script = """
+        const nodes = [...document.querySelectorAll('*')].filter((el) => {
+          const value = [el.title, el.getAttribute('aria-label'),
+            el.getAttribute('data-tooltip'), el.getAttribute('data-name'),
+            el.textContent && el.textContent.trim()].filter(Boolean).join(' ');
+          return /forward/i.test(value) && el.offsetParent !== null;
+        }).slice(0, 10);
+        return nodes.map((el) => ({
+          tag: el.tagName,
+          title: el.title || null,
+          ariaLabel: el.getAttribute('aria-label'),
+          dataTooltip: el.getAttribute('data-tooltip'),
+          dataName: el.getAttribute('data-name'),
+          className: typeof el.className === 'string' ? el.className : null,
+          text: (el.textContent || '').trim().slice(0, 80),
+          disabled: Boolean(el.disabled),
+          ariaDisabled: el.getAttribute('aria-disabled')
+        }));
+    """
+    try:
+        return json.dumps(driver.execute_script(script), ensure_ascii=False)
+    except Exception as exc:
+        return f"diagnostics unavailable: {exc}"
 
 
 def dismiss_popups(driver) -> None:
@@ -67,11 +125,15 @@ def wait_for_replay(driver, timeout: int):
         if forward is not None:
             return forward
         now = time.monotonic()
-        if now - last_notice >= 150:
+        if now - last_notice >= 15:
             print("Waiting for an enabled TradingView Replay Forward button...", flush=True)
             last_notice = now
         time.sleep(1)
-    raise TimeoutError("Replay Forward did not become enabled before the setup timeout")
+    details = forward_diagnostics(driver)
+    raise TimeoutError(
+        f"Replay Forward did not become enabled within {timeout}s. "
+        f"Visible Forward-like controls: {details}"
+    )
 
 
 def click_forward(driver, element) -> None:
@@ -115,13 +177,16 @@ def run(args) -> int:
             "the starting candle, and leave Forward enabled. Automation will begin automatically.",
             flush=True,
         )
-        wait_for_replay(driver, args.setup_timeout)
+        # Keep this WebElement. TradingView removes the button's title after it
+        # displays the first tooltip, although the element itself remains valid.
+        forward = wait_for_replay(driver, args.setup_timeout)
 
         decisions_path = run_dir / "decisions.jsonl"
         for step in range(1, args.steps + 1):
             if STOP_REQUESTED:
                 break
-            forward = wait_for_replay(driver, args.forward_timeout)
+            if not cached_forward_ready(forward):
+                forward = wait_for_replay(driver, args.forward_timeout)
             click_forward(driver, forward)
             time.sleep(args.render_wait)
 
