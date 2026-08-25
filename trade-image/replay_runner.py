@@ -217,6 +217,14 @@ def append_trade_csv(path: Path, row: dict) -> None:
         writer.writerow({field: row.get(field, "") for field in TRADE_FIELDS})
 
 
+def initialize_trade_csv(path: Path) -> None:
+    if path.exists() and path.stat().st_size:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        csv.DictWriter(stream, fieldnames=TRADE_FIELDS).writeheader()
+
+
 def exit_for_candle(trade: dict, high: float, low: float):
     side, stop, target = trade["side"], trade["stop"], trade["target"]
     stop_hit = low <= stop if side == "LONG" else high >= stop
@@ -316,11 +324,16 @@ def run(args) -> int:
             time.sleep(args.initial_load_wait)
 
         decisions_path = run_dir / "decisions.jsonl"
+        initialize_trade_csv(run_dir / "trades.csv")
+        initialize_trade_csv(BASE_DIR / "trades.csv")
         open_trade = None
         balance = args.initial_balance
-        for step in range(1, args.steps + 1):
+        step = 0
+        closed_trades = 0
+        while closed_trades < args.trades:
             if STOP_REQUESTED:
                 break
+            step += 1
             if not cached_forward_ready(forward):
                 forward = wait_for_replay(driver, args.forward_timeout)
             click_forward(driver, forward)
@@ -373,7 +386,9 @@ def run(args) -> int:
                     )
                     open_trade = None
                     closed_this_candle = True
+                    closed_trades += 1
                     (run_dir / "open_trade.json").unlink(missing_ok=True)
+                    print(f"Completed trades: {closed_trades}/{args.trades}", flush=True)
 
             if not open_trade and not closed_this_candle and decision["direction"].upper() in {"LONG", "SHORT"}:
                 row = signal_row(run_id, step, record["captured_utc"], image_path, decision)
@@ -404,9 +419,12 @@ def run(args) -> int:
                 f"{decision.get('rationale', '')}",
                 flush=True,
             )
-            if args.stop_on_signal and decision["direction"].upper() != "WAIT":
-                print("Stopping because Gemini produced a trade signal.", flush=True)
-                break
+        if open_trade:
+            print(
+                f"Run interrupted with trade {open_trade['id']} still open; state remains in "
+                f"{run_dir / 'open_trade.json'}",
+                flush=True,
+            )
         print(f"Run artifacts saved under {run_dir}")
         return 0
     finally:
@@ -420,7 +438,10 @@ def run(args) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=DEFAULT_URL)
-    parser.add_argument("--steps", type=int, default=20)
+    parser.add_argument(
+        "--trades", type=int, default=1,
+        help="number of completed paper trades required before stopping (default: 1)",
+    )
     parser.add_argument("--render-wait", type=float, default=2.0)
     parser.add_argument("--initial-load-wait", type=float, default=180.0)
     parser.add_argument("--setup-timeout", type=int, default=1800)
@@ -435,16 +456,15 @@ def main() -> int:
     parser.add_argument("--context", type=Path, default=DEFAULT_CONTEXT)
     parser.add_argument("--profile-dir", type=Path, default=BASE_DIR / "chrome-profile")
     parser.add_argument("--output-dir", type=Path, default=BASE_DIR / "runs")
-    parser.add_argument("--stop-on-signal", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--keep-browser-open", action="store_true")
     args = parser.parse_args()
     if (
-        args.steps < 1 or args.render_wait < 0 or args.initial_load_wait < 0
+        args.trades < 1 or args.render_wait < 0 or args.initial_load_wait < 0
         or args.gemini_attempts < 1 or args.retry_delay < 0 or args.initial_balance <= 0
         or args.risk_percent <= 0 or args.fee_rate < 0
     ):
-        parser.error("steps/attempts must be positive and wait/delay values cannot be negative")
+        parser.error("trades/attempts must be positive and wait/delay values cannot be negative")
     load_env(ROOT / ".env")
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)

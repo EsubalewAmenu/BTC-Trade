@@ -34,10 +34,10 @@ Install Selenium in an isolated environment:
 trade-image/.venv/bin/pip install -r trade-image/requirements.txt
 ```
 
-Start a 50-candle test:
+Run until one paper trade closes:
 
 ```bash
-trade-image/.venv/bin/python trade-image/replay_runner.py --steps 50
+trade-image/.venv/bin/python trade-image/replay_runner.py
 ```
 
 On the first run, log in to TradingView, open **Bar Replay**, and select the starting candle. Leave
@@ -58,14 +58,18 @@ first. Completed trades and PnL are written to cumulative `trade-image/trades.cs
 `trades.csv`. Defaults are 1,000 USDT starting balance, 0.5% account risk per trade, and 0.06% per-side
 fees. Override them with `--initial-balance`, `--risk-percent`, and `--fee-rate`.
 
+The runner is limited by completed trades, not replay candles. `--trades 1` stops after one position
+reaches its stop or target; `--trades 10` stops after ten completed positions. It continues through
+as many WAIT candles as necessary. Ctrl+C stops safely and preserves `open_trade.json`.
+
 Useful options:
 
 ```bash
-# Stop at the first LONG or SHORT decision
-trade-image/.venv/bin/python trade-image/replay_runner.py --steps 100 --stop-on-signal
+# Stop after 10 paper trades have closed
+trade-image/.venv/bin/python trade-image/replay_runner.py --trades 10
 
 # Allow the run to continue if one Gemini request fails
-trade-image/.venv/bin/python trade-image/replay_runner.py --steps 100 --continue-on-error
+trade-image/.venv/bin/python trade-image/replay_runner.py --trades 10 --continue-on-error
 ```
 
 Keep the TradingView tab in the foreground while the replay runs. Press Ctrl+C for a clean stop.

@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from replay_runner import (
     FORWARD_SELECTORS,
     append_signal_csv,
+    initialize_trade_csv,
     cached_forward_ready,
     exit_for_candle,
     is_forward_ready,
@@ -90,6 +91,13 @@ class ReplayRunnerTests(unittest.TestCase):
             exit_for_candle({"side": "LONG", "stop": 90, "target": 120}, 125, 85),
             (90, "STOP"),
         )
+
+    def test_trade_csv_exists_before_first_trade_closes(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "trades.csv"
+            initialize_trade_csv(path)
+            content = path.read_text(encoding="utf-8")
+        self.assertIn("Gross PnL,Net PnL,R Multiple,Exit Reason", content)
 
 
 if __name__ == "__main__":
