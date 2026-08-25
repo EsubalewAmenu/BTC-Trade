@@ -5,12 +5,8 @@ A beginner-to-intermediate guide to structure, confirmation, entries, stops, 2R 
 Core principle  A good trade is a planned risk with evidence—not a prediction that must be right.
 
 
-Designed for chart replay and paper trading before live capital
-
 How to use this guide
 Read Chapters 1–6 once, then keep the one-page checklists beside your chart. During replay, stop after every closed candle, make the decision using only visible information, draw the forecast, and reveal the next candle only after the plan is fixed.
-Important  This is educational material, not individualized financial advice. Trading can lose all committed capital. Paper trade first; never use borrowed money or money needed for living expenses.
-
 
 Contents
 1. The professional trading mindset
@@ -36,23 +32,18 @@ Move the stop to avoid a loss
 Accept the preplanned structural stop
 Force 2R by inventing a distant target
 Skip when structure cannot realistically pay 2R
-Judge one result
-Review a sample of 20–50 rule-based trades
-
 
 The only controllable variables  Setup selection, entry timing, stop location, size, target, execution and review. Outcome is not controllable.
-
 
 2. Read the chart from context to trigger
 Set the timeframe and market. Use one primary execution timeframe and one higher timeframe for context.
 Identify the higher-timeframe regime: uptrend, downtrend or range.
 Mark major swing highs/lows and the nearest support/resistance zones.
 Ask where price is located: at an edge, in the middle, extended, or retesting a broken level.
-Wait for a closed-candle signal. Never use an unfinished candle as confirmation in replay.
+Wait for a closed-candle signal. Never use an unfinished candle as confirmation.
 Measure entry, structural stop and realistic target. Reject the trade if reward:risk is below 2:1.
 Size the position from account risk—not from confidence or emotion.
 Top-down rule  Context chooses the direction; location chooses interest; confirmation chooses timing; invalidation chooses the stop; available space chooses whether the trade exists.
-
 
 3. Structure, levels and zones
 
@@ -74,7 +65,6 @@ Broken resistance retested from above
 May become support if price rejects it and closes back above.
 Broken support retested from below
 May become resistance if price rejects it and closes back below.
-
 
 4. Confirming candles and retests
 
@@ -108,7 +98,6 @@ Structure reversal
 Sweep/rejection; break of swing; lower high or higher low retest
 Calling a top/bottom from RSI alone
 
-
 The no-trade decision
 No clear level or swing structure.
 Entry is in the middle of a range.
@@ -118,6 +107,7 @@ Nearest opposing level prevents a realistic 2R target.
 Price has already run far from the planned entry.
 High-impact event risk is unknown or imminent.
 You are trying to recover a previous loss.
+
 6. Structural stops and invalidation
 A structural stop is placed where the trade thesis is objectively wrong. It is not an arbitrary percentage and not the smallest distance that makes the position tool display 2R.
 Setup
@@ -131,11 +121,11 @@ Below the retest low and back inside the old range
 Breakdown retest short
 Above the retest high and back inside the old range
 
-
 Place the stop first; calculate size second.
 Account for wick noise and spread/fees, but do not make the stop so wide that the thesis becomes vague.
 Never widen a stop after entry. If new information invalidates the plan, exit; do not renegotiate with the chart.
 A stop hit does not prove the decision was wrong. It proves the defined scenario did not occur.
+
 7. Reward:risk and realistic targets
 R is the amount lost if the structural stop is hit. A 2R target earns twice the planned risk before fees. Reward:risk is a filter, not a guarantee.
 Formula
@@ -151,13 +141,12 @@ Short 2R target = Entry − 2 × risk
 Position size = Account risk ÷ Stop distance
 $5 risk ÷ $2 = 2.5 units
 
-
 Critical gate  A mathematically correct 2R target is invalid if strong support/resistance lies before it. Either improve the entry without shrinking the structural stop, select a different target/setup, or skip.
-
 
 Include estimated entry and exit fees when evaluating net expectancy.
 At 2R, a strategy can be profitable below a 50% win rate, but only if losses stay near −1R and winners are actually allowed to reach target.
 Do not cut every winner at +0.5R while accepting full −1R losses; that destroys the planned payoff distribution.
+
 8. Position sizing and capital protection
 Choose a fixed percentage of current account equity. Beginners commonly use 0.25%–0.5% per trade while learning; the exact level must be small enough that a losing streak does not change behavior.
 Control
@@ -173,16 +162,10 @@ Changes margin, not market risk; size from stop distance first
 Drawdown response
 Reduce size; review execution; do not double risk to recover
 
-
 Example  $500 account × 0.5% = $2.50 maximum planned loss. If the BTC stop is $1,000 away, quantity = $2.50 ÷ $1,000 = 0.0025 BTC before fees.
-
 
 9. Drawing and forecasting positions
 
-Figure 3. Long-position geometry.
-
-Figure 4. Short-position geometry.
-Chart drawing order
 Mark higher-timeframe support/resistance as narrow zones.
 Mark the latest meaningful swing high and swing low.
 Draw the entry at the confirmation close or planned retest price.
@@ -201,6 +184,7 @@ Higher-timeframe trend is down or reversal structure is confirmed.
 Resistance is above entry and has been defended.
 Confirmation closes bearish at the level.
 Stop is above invalidation; target is below entry; 2R space is realistic.
+
 10. Trade management
 Management rules must be chosen before entry. Constant improvisation makes backtesting meaningless.
 Default training model: full stop or full target. It creates clean data.
@@ -208,6 +192,7 @@ Move to breakeven only when the written plan defines a structural reason—not m
 Partial exits reduce variance but also reduce average R. Test them as a separate strategy.
 Do not add to a losing position. Adding to winners is advanced and requires a total-risk cap.
 If both stop and target fall inside one replay candle, lower-timeframe data is required; otherwise record the conservative assumption.
+
 11. Journal and review
 Record decisions, not just profit. A useful journal allows another person to reconstruct the trade without hindsight.
 Field
@@ -228,7 +213,6 @@ Process grade
 A/B/C based on rule adherence—not win/loss
 Lesson
 One specific repeat/avoid action
-
 
 Review metrics
 Win rate = winners ÷ total closed trades.
@@ -280,7 +264,6 @@ Breakout candle
 Closes beyond a defined zone
 Using a wick-only break as confirmation
 
-
 Appendix D. A 30-session practice routine
 Sessions 1–5: mark structure and zones only; no trades.
 Sessions 6–10: label confirming candles and retests; record why signals fail.
@@ -288,8 +271,6 @@ Sessions 11–15: forecast entries/stops/targets; reject every setup below reali
 Sessions 16–25: execute one fixed setup model with 0.5% simulated risk.
 Sessions 26–30: calculate expectancy, drawdown and rule adherence; change only one rule at a time.
 Graduation standard  Do not move to live trading because of a few wins. Require a meaningful replay sample, positive expectancy after fees, high rule adherence, and losses small enough that execution remains calm.
-
-
 
 Required response schema:
 {
