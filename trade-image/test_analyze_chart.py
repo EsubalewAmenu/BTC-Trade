@@ -65,6 +65,25 @@ class ChartAnalysisTests(unittest.TestCase):
         }
         self.assertEqual(MODULE.reject_unexecutable_signal(result)["direction"], "LONG")
 
+    def test_sub_two_r_model_signal_becomes_wait(self):
+        result = MODULE.validate_and_normalize_result({
+            "direction": "LONG", "confidence": 80, "entry_price": 100,
+            "stop_price": 90, "target_price": 114.8, "rationale": "weak plan",
+            "candle_high": 101, "candle_low": 99, "candle_close": 100,
+            "candle_utc": "now",
+        })
+        self.assertEqual(result["direction"], "WAIT")
+        self.assertIn("1.480000", result["rationale"])
+
+    def test_invalid_candle_data_remains_fatal(self):
+        with self.assertRaisesRegex(ValueError, "invalid current candle"):
+            MODULE.validate_and_normalize_result({
+                "direction": "LONG", "confidence": 80, "entry_price": 100,
+                "stop_price": 90, "target_price": 120, "rationale": "bad candle",
+                "candle_high": 90, "candle_low": 110, "candle_close": 100,
+                "candle_utc": "now",
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

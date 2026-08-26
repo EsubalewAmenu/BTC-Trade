@@ -448,8 +448,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument(
-        "--trades", type=int, default=1,
-        help="number of completed paper trades required before stopping (default: 1)",
+        "--trades", type=int, default=5,
+        help="number of completed paper trades required before stopping (default: 5)",
     )
     parser.add_argument("--render-wait", type=float, default=2.0)
     parser.add_argument("--initial-load-wait", type=float, default=180.0)

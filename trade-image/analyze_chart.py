@@ -135,6 +135,35 @@ def reject_unexecutable_signal(result: dict) -> dict:
     }
 
 
+def rejected_signal_as_wait(result: dict, reason: str) -> dict:
+    return {
+        **result,
+        "direction": "WAIT",
+        "entry_price": None,
+        "stop_price": None,
+        "target_price": None,
+        "confidence": 95,
+        "rationale": f"Model signal rejected by risk controls: {reason}",
+    }
+
+
+def validate_and_normalize_result(result: dict) -> dict:
+    """Reject bad trade plans as WAIT; still fail on corrupt/unreadable observations."""
+    try:
+        validate_result(result)
+    except ValueError as exc:
+        direction = str(result.get("direction", "")).upper()
+        trade_error = str(exc).startswith((
+            "LONG/SHORT requires entry, stop, and target",
+            "invalid stop/entry/target geometry",
+            "reward-to-risk is below 2.0",
+        ))
+        if direction in {"LONG", "SHORT"} and trade_error:
+            return rejected_signal_as_wait(result, str(exc))
+        raise
+    return reject_unexecutable_signal(result)
+
+
 def analyze(
     image_path: Path, context_path: Path, model: str, timeout: int,
     open_trade: Optional[dict] = None, provider: str = "qwen",
@@ -205,9 +234,7 @@ def analyze(
     text = raw.get("message", {}).get("content", "") if provider == "qwen" else response_text(raw)
     if not text:
         raise ValueError(f"{provider.upper()} response contains no message content")
-    result = parse_json_text(text)
-    validate_result(result)
-    result = reject_unexecutable_signal(result)
+    result = validate_and_normalize_result(parse_json_text(text))
     return result, raw
 
 
