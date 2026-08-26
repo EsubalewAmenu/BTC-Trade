@@ -14,6 +14,27 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_IMAGE = Path(__file__).with_name("screenshot") / "BTCUSDT_2026-08-25_09-51-56.png"
 DEFAULT_CONTEXT = Path(__file__).with_name("system_context.txt")
+DEFAULT_QWEN_CONTEXT = Path(__file__).with_name("qwen_system_context.txt")
+RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "direction": {"type": "string", "enum": ["WAIT", "LONG", "SHORT"]},
+        "entry_price": {"type": ["number", "null"]},
+        "stop_price": {"type": ["number", "null"]},
+        "target_price": {"type": ["number", "null"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 100},
+        "rationale": {"type": "string"},
+        "candle_high": {"type": "number"},
+        "candle_low": {"type": "number"},
+        "candle_close": {"type": "number"},
+        "candle_utc": {"type": ["string", "null"]},
+    },
+    "required": [
+        "direction", "entry_price", "stop_price", "target_price", "confidence",
+        "rationale", "candle_high", "candle_low", "candle_close", "candle_utc",
+    ],
+    "additionalProperties": False,
+}
 
 
 def load_env(path: Path) -> None:
@@ -76,19 +97,49 @@ def validate_result(result: dict) -> None:
     if not valid:
         raise ValueError("invalid stop/entry/target geometry")
     calculated_rr = abs(target - entry) / abs(entry - stop)
-    # Gemini reads prices from a chart image, so allow a tiny 0.001R display/
+    # The model reads prices from a chart image, so allow a tiny 0.001R display/
     # floating-point tolerance around an intended 2.000R setup.
     if calculated_rr < 1.999:
         raise ValueError(f"reward-to-risk is below 2.0: {calculated_rr:.6f}")
 
 
+def reject_unexecutable_signal(result: dict) -> dict:
+    """Turn visually plausible but impossible/retroactive model trades into WAIT."""
+    direction = str(result["direction"]).upper()
+    if direction == "WAIT":
+        return result
+    entry = float(result["entry_price"])
+    target = float(result["target_price"])
+    close = float(result["candle_close"])
+    high = float(result["candle_high"])
+    low = float(result["candle_low"])
+    problems = []
+    if abs(entry - close) / close > 0.005:
+        problems.append(
+            f"entry {entry:g} is more than 0.5% from current close {close:g}"
+        )
+    if direction == "LONG" and target <= high:
+        problems.append(f"long target {target:g} was already touched by candle high {high:g}")
+    if direction == "SHORT" and target >= low:
+        problems.append(f"short target {target:g} was already touched by candle low {low:g}")
+    if not problems:
+        return result
+    return {
+        **result,
+        "direction": "WAIT",
+        "entry_price": None,
+        "stop_price": None,
+        "target_price": None,
+        "confidence": 95,
+        "rationale": "Model signal rejected as unexecutable: " + "; ".join(problems),
+    }
+
+
 def analyze(
     image_path: Path, context_path: Path, model: str, timeout: int,
-    open_trade: Optional[dict] = None,
+    open_trade: Optional[dict] = None, provider: str = "qwen",
+    qwen_host: str = "http://127.0.0.1:11434", num_ctx: int = 8192,
 ) -> tuple[dict, dict]:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is missing from the environment or root .env")
     if not image_path.is_file():
         raise FileNotFoundError(image_path)
     mime_type = mimetypes.guess_type(image_path.name)[0] or "image/png"
@@ -107,28 +158,40 @@ def analyze(
             " An existing paper position is open, so direction must be WAIT and no new signal "
             f"may be proposed until it closes. Open trade: {json.dumps(open_trade)}"
         )
-    request_body = {
-        "systemInstruction": {"parts": [{"text": context_path.read_text(encoding="utf-8")}]},
-        "contents": [{
-            "role": "user",
-            "parts": [
+    context = context_path.read_text(encoding="utf-8")
+    if provider == "qwen":
+        request_body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": context},
+                {"role": "user", "content": user_prompt, "images": [image_data]},
+            ],
+            "format": RESULT_SCHEMA,
+            "stream": False,
+            "options": {"num_ctx": num_ctx, "temperature": 0.1, "seed": 42},
+        }
+        endpoint = f"{qwen_host.rstrip('/')}/api/chat"
+        headers = {"Content-Type": "application/json"}
+    elif provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is missing from the environment or root .env")
+        request_body = {
+            "systemInstruction": {"parts": [{"text": context}]},
+            "contents": [{"role": "user", "parts": [
                 {"inlineData": {"mimeType": mime_type, "data": image_data}},
                 {"text": user_prompt},
-            ],
-        }],
-        "generationConfig": {
-            "temperature": 0.1,
-            "responseMimeType": "application/json",
-        },
-    }
-    endpoint = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent"
-    )
+            ]}],
+            "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+        }
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
     request = Request(
         endpoint,
         data=json.dumps(request_body).encode("utf-8"),
-        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+        headers=headers,
         method="POST",
     )
     try:
@@ -136,30 +199,47 @@ def analyze(
             raw = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini HTTP {exc.code}: {body}") from exc
+        raise RuntimeError(f"{provider.upper()} HTTP {exc.code}: {body}") from exc
     except URLError as exc:
-        raise RuntimeError(f"Gemini request failed: {exc.reason}") from exc
-    result = parse_json_text(response_text(raw))
+        raise RuntimeError(f"{provider.upper()} request failed: {exc.reason}") from exc
+    text = raw.get("message", {}).get("content", "") if provider == "qwen" else response_text(raw)
+    if not text:
+        raise ValueError(f"{provider.upper()} response contains no message content")
+    result = parse_json_text(text)
     validate_result(result)
+    result = reject_unexecutable_signal(result)
     return result, raw
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Send one chart screenshot to Gemini")
+    parser = argparse.ArgumentParser(description="Send one chart screenshot to a multimodal model")
     parser.add_argument("--image", type=Path, default=DEFAULT_IMAGE)
-    parser.add_argument("--context", type=Path, default=DEFAULT_CONTEXT)
-    parser.add_argument("--model", default=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"))
+    parser.add_argument("--context", type=Path)
+    parser.add_argument("--provider", choices=("qwen", "gemini"), default=os.getenv("LLM_PROVIDER", "qwen"))
+    parser.add_argument("--model")
+    parser.add_argument("--qwen-host", default=os.getenv("QWEN_HOST", "http://127.0.0.1:11434"))
+    parser.add_argument("--num-ctx", type=int, default=8192)
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).with_name("output"))
     args = parser.parse_args()
+    if not args.model:
+        args.model = (
+            os.getenv("QWEN_MODEL", "qwen3-vl:8b-instruct") if args.provider == "qwen"
+            else os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+        )
+    if not args.context:
+        args.context = DEFAULT_QWEN_CONTEXT if args.provider == "qwen" else DEFAULT_CONTEXT
     load_env(ROOT / ".env")
     try:
-        result, raw = analyze(args.image, args.context, args.model, args.timeout)
+        result, raw = analyze(
+            args.image, args.context, args.model, args.timeout, provider=args.provider,
+            qwen_host=args.qwen_host, num_ctx=args.num_ctx,
+        )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    (args.output_dir / "gemini_raw_response.json").write_text(
+    (args.output_dir / f"{args.provider}_raw_response.json").write_text(
         json.dumps(raw, indent=2), encoding="utf-8"
     )
     result_path = args.output_dir / "chart_decision.json"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Advance a TradingView bar replay and analyze each rendered chart with Gemini."""
+"""Advance a TradingView bar replay and analyze each rendered chart with a vision LLM."""
 
 import argparse
 import csv
@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from analyze_chart import DEFAULT_CONTEXT, ROOT, analyze, load_env
+from analyze_chart import DEFAULT_CONTEXT, DEFAULT_QWEN_CONTEXT, ROOT, analyze, load_env
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -165,9 +165,9 @@ def save_json(path: Path, value: dict) -> None:
 
 def is_retryable_gemini_error(exc: Exception) -> bool:
     message = str(exc)
-    return "Gemini HTTP 429" in message or any(
-        f"Gemini HTTP {code}" in message for code in (500, 502, 503, 504)
-    ) or "Gemini request failed" in message
+    return "HTTP 429" in message or any(
+        f"HTTP {code}" in message for code in (500, 502, 503, 504)
+    ) or "request failed" in message
 
 
 def gemini_retry_delay(exc: Exception, fallback: float) -> float:
@@ -182,15 +182,18 @@ def gemini_retry_delay(exc: Exception, fallback: float) -> float:
 
 
 def analyze_with_retry(image_path: Path, args, open_trade=None):
-    for attempt in range(1, args.gemini_attempts + 1):
+    for attempt in range(1, args.llm_attempts + 1):
         try:
-            return analyze(image_path, args.context, args.model, args.gemini_timeout, open_trade)
+            return analyze(
+                image_path, args.context, args.model, args.llm_timeout, open_trade,
+                provider=args.provider, qwen_host=args.qwen_host, num_ctx=args.num_ctx,
+            )
         except Exception as exc:
-            if attempt >= args.gemini_attempts or not is_retryable_gemini_error(exc):
+            if attempt >= args.llm_attempts or not is_retryable_gemini_error(exc):
                 raise
             delay = gemini_retry_delay(exc, args.retry_delay * (2 ** (attempt - 1)))
             print(
-                f"Gemini attempt {attempt}/{args.gemini_attempts} failed: {exc}. "
+                f"LLM attempt {attempt}/{args.llm_attempts} failed: {exc}. "
                 f"Retrying in {delay:.1f}s...",
                 file=sys.stderr,
                 flush=True,
@@ -346,14 +349,14 @@ def run(args) -> int:
             # are discarded. This also preserves the chart for fatal errors.
             shutil.copyfile(image_path, run_dir / "last_screenshot.png")
 
-            print(f"STEP {step}: screenshot captured; requesting Gemini...", flush=True)
+            print(f"STEP {step}: screenshot captured; requesting {args.provider.upper()}...", flush=True)
             position_was_open = open_trade is not None
             try:
                 decision, _raw = analyze_with_retry(image_path, args, open_trade)
             except Exception as exc:
                 if not position_was_open:
                     image_path.unlink(missing_ok=True)
-                print(f"STEP {step}: Gemini error: {exc}", file=sys.stderr, flush=True)
+                print(f"STEP {step}: {args.provider.upper()} error: {exc}", file=sys.stderr, flush=True)
                 if not args.continue_on_error:
                     return 1
                 continue
@@ -421,7 +424,8 @@ def run(args) -> int:
 
             print(
                 f"STEP {step}: {decision['direction']} | confidence={decision['confidence']} | "
-                f"{decision.get('rationale', '')}",
+                f"OHLC H={decision['candle_high']} L={decision['candle_low']} "
+                f"C={decision['candle_close']} | {decision.get('rationale', '')}",
                 flush=True,
             )
         if open_trade:
@@ -451,22 +455,32 @@ def main() -> int:
     parser.add_argument("--initial-load-wait", type=float, default=180.0)
     parser.add_argument("--setup-timeout", type=int, default=1800)
     parser.add_argument("--forward-timeout", type=int, default=30)
-    parser.add_argument("--gemini-timeout", type=int, default=120)
-    parser.add_argument("--gemini-attempts", type=int, default=3)
+    parser.add_argument("--llm-timeout", "--gemini-timeout", dest="llm_timeout", type=int, default=300)
+    parser.add_argument("--llm-attempts", "--gemini-attempts", dest="llm_attempts", type=int, default=3)
     parser.add_argument("--retry-delay", type=float, default=5.0)
     parser.add_argument("--initial-balance", type=float, default=1000.0)
     parser.add_argument("--risk-percent", type=float, default=0.5)
     parser.add_argument("--fee-rate", type=float, default=0.0006)
-    parser.add_argument("--model", default=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"))
-    parser.add_argument("--context", type=Path, default=DEFAULT_CONTEXT)
+    parser.add_argument("--provider", choices=("qwen", "gemini"), default=os.getenv("LLM_PROVIDER", "qwen"))
+    parser.add_argument("--model")
+    parser.add_argument("--qwen-host", default=os.getenv("QWEN_HOST", "http://127.0.0.1:11434"))
+    parser.add_argument("--num-ctx", type=int, default=8192)
+    parser.add_argument("--context", type=Path)
     parser.add_argument("--profile-dir", type=Path, default=BASE_DIR / "chrome-profile")
     parser.add_argument("--output-dir", type=Path, default=BASE_DIR / "runs")
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--keep-browser-open", action="store_true")
     args = parser.parse_args()
+    if not args.model:
+        args.model = (
+            os.getenv("QWEN_MODEL", "qwen3-vl:8b-instruct") if args.provider == "qwen"
+            else os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+        )
+    if not args.context:
+        args.context = DEFAULT_QWEN_CONTEXT if args.provider == "qwen" else DEFAULT_CONTEXT
     if (
         args.trades < 1 or args.render_wait < 0 or args.initial_load_wait < 0
-        or args.gemini_attempts < 1 or args.retry_delay < 0 or args.initial_balance <= 0
+        or args.llm_attempts < 1 or args.retry_delay < 0 or args.initial_balance <= 0
         or args.risk_percent <= 0 or args.fee_rate < 0
     ):
         parser.error("trades/attempts must be positive and wait/delay values cannot be negative")

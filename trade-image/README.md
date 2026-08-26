@@ -1,13 +1,15 @@
-# Gemini chart-image experiment
+# Local Qwen chart-image replay
 
-This folder is independent from the existing paper bot. It sends one local chart screenshot and
-the pullback field guide to Gemini, prints the validated JSON decision, and saves both parsed and
-raw responses under `output/`. It never places or simulates a trade.
+This folder is independent from the existing paper bot. By default it sends chart screenshots and
+the pullback field guide to the local `qwen3-vl:8b-instruct` model through Ollama at
+`http://127.0.0.1:11434`. No API key or cloud image upload is required.
 
-The script reads `GEMINI_API_KEY` from the repository root `.env` without printing it.
+Qwen uses the concise pullback-only `qwen_system_context.txt`; Gemini fallback keeps the longer
+`system_context.txt`. The local API request uses a strict JSON schema, and replay logs print the
+model-observed candle high/low/close so changing chart input is visible immediately.
 
 ```bash
-python3 trade-image/analyze_chart.py
+python3 trade-image/analyze_chart.py --image /absolute/path/to/btc-chart.png
 ```
 
 Optional arguments:
@@ -15,15 +17,19 @@ Optional arguments:
 ```bash
 python3 trade-image/analyze_chart.py \
   --image trade-image/screenshot/another-chart.png \
-  --model gemini-3.6-flash
+  --model qwen3-vl:8b-instruct
 ```
 
-The default screenshot is `screenshot/BTCUSD_2026-08-25_08-51-32.png`.
+Gemini remains available as an explicit fallback:
+
+```bash
+python3 trade-image/analyze_chart.py --provider gemini --model gemini-3.6-flash
+```
 
 ## Automated TradingView replay
 
 `replay_runner.py` opens the TradingView chart in a real Chrome window, advances Bar Replay one
-candle at a time, captures the visible chart, and sends every screenshot to Gemini. It uses its own
+candle at a time, captures the visible chart, and sends every screenshot to local Qwen. It uses its own
 persistent Chrome profile under `trade-image/chrome-profile`, so login normally is required only on
 the first run. It does not click Buy/Sell or place trades.
 
@@ -45,12 +51,12 @@ the Replay Forward control enabled. The runner detects it and begins automatical
 is needed. It waits three minutes after the first detection so TradingView can finish loading its
 initial candle history. Decisions and screenshots are grouped in a timestamped folder under
 `trade-image/runs/`. Screenshots are retained under each run's `screenshots/` folder. Transient
-Gemini 429/5xx failures are retried up to three total attempts with exponential backoff, while also
-honoring a longer retry delay returned by Gemini.
+local or cloud LLM connection/429/5xx failures are retried up to three total attempts with
+exponential backoff. The default request timeout is 300 seconds to accommodate a cold model load.
 
 To minimize disk usage, a no-position WAIT screenshot is deleted immediately after analysis and no
 decision file is written for it. The entry signal screenshot and every screenshot/decision from the
-open position through its exit are retained. Raw Gemini responses and the duplicate decisions JSONL
+open position through its exit are retained. Raw model responses and the duplicate decisions JSONL
 file are not stored. One rolling `last_screenshot.png` is overwritten on every replay step, ensuring
 the final visible chart is preserved if the run finishes or encounters an error.
 
@@ -74,7 +80,7 @@ Useful options:
 # Stop after 10 paper trades have closed
 trade-image/.venv/bin/python trade-image/replay_runner.py --trades 10
 
-# Allow the run to continue if one Gemini request fails
+# Allow the run to continue if one model request fails
 trade-image/.venv/bin/python trade-image/replay_runner.py --trades 10 --continue-on-error
 ```
 

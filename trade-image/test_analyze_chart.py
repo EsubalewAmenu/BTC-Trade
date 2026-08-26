@@ -45,6 +45,26 @@ class ChartAnalysisTests(unittest.TestCase):
             "candle_high": 101, "candle_low": 99, "candle_close": 100,
         })
 
+    def test_rejects_retroactive_entry_as_wait(self):
+        result = MODULE.reject_unexecutable_signal({
+            "direction": "LONG", "entry_price": 64668.57, "stop_price": 62500,
+            "target_price": 72689.38, "confidence": 95, "rationale": "bad OCR",
+            "candle_high": 72689.38, "candle_low": 69716.72,
+            "candle_close": 72689.38, "candle_utc": "04:38 UTC",
+        })
+        self.assertEqual(result["direction"], "WAIT")
+        self.assertIsNone(result["entry_price"])
+        self.assertIn("unexecutable", result["rationale"])
+
+    def test_keeps_executable_current_price_signal(self):
+        result = {
+            "direction": "LONG", "entry_price": 100, "stop_price": 98,
+            "target_price": 104, "confidence": 80, "rationale": "pullback",
+            "candle_high": 101, "candle_low": 99, "candle_close": 100,
+            "candle_utc": "now",
+        }
+        self.assertEqual(MODULE.reject_unexecutable_signal(result)["direction"], "LONG")
+
 
 if __name__ == "__main__":
     unittest.main()
