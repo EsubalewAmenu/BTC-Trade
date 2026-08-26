@@ -1,0 +1,5 @@
+.venv/
+chrome-profile/
+runs/
+trades.csv
+__pycache__/
