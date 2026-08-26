@@ -8,6 +8,7 @@ import math
 import os
 import shutil
 import signal
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -33,6 +34,12 @@ TRADE_FIELDS = (
     "Margin USDT", "Leverage", "Stop Price", "Target Price", "Entry Fee", "Exit Fee",
     "Gross PnL", "Net PnL", "R Multiple", "Exit Reason", "Hold Candles", "Confidence",
     "Rationale", "Entry Screenshot", "Exit Screenshot", "Balance After", "Run ID",
+)
+SIGNAL_FIELDS = (
+    "Trade ID", "Status", "Symbol", "Timeframe", "Side", "Signal Candle UTC",
+    "Opened UTC", "Model Entry Price", "Actual Entry Price", "Stop Price", "Target Price",
+    "Quantity BTC", "Notional USDT", "Entry Fee", "Reward Risk", "Confidence", "Rationale",
+    "Screenshot",
 )
 
 
@@ -71,10 +78,9 @@ def fetch_mark_price() -> float:
     return float(payload["markPrice"])
 
 
-def next_candle_request_time(now=None) -> float:
+def next_candle_close_time(now=None) -> float:
     now = time.time() if now is None else now
-    next_close = (math.floor(now / INTERVAL_SECONDS) + 1) * INTERVAL_SECONDS
-    return next_close + 20
+    return (math.floor(now / INTERVAL_SECONDS) + 1) * INTERVAL_SECONDS
 
 
 def interruptible_wait(seconds: float):
@@ -110,17 +116,64 @@ def dismiss_popups(driver):
                 pass
 
 
-def select_15m(driver) -> bool:
-    from selenium.webdriver.common.by import By
-    xpath = "//*[self::button or self::div or self::span][normalize-space()='15m' or normalize-space()='15M']"
-    for element in driver.find_elements(By.XPATH, xpath):
+def install_15m_click_listener(driver):
+    """Record the user's explicit 15m click instead of guessing login readiness."""
+    script = """
+        if (!window.__btcPaper15mListenerInstalled) {
+          window.__btcPaper15mListenerInstalled = true;
+          window.__btcPaper15mClicked = false;
+          document.addEventListener('click', (event) => {
+            let node = event.target;
+            for (let i = 0; node && i < 6; i++, node = node.parentElement) {
+              const text = (node.innerText || node.textContent || '').trim();
+              if (text === '15m' || text === '15M') {
+                window.__btcPaper15mClicked = true;
+                break;
+              }
+            }
+          }, true);
+        }
+    """
+    try:
+        driver.execute_script(script)
+    except Exception:
+        pass
+
+
+def wait_for_user_15m_click(driver):
+    last_notice = 0.0
+    while not STOP_REQUESTED:
+        install_15m_click_listener(driver)
         try:
-            if element.is_displayed() and element.is_enabled():
-                driver.execute_script("arguments[0].click();", element)
+            if driver.execute_script("return window.__btcPaper15mClicked === true;"):
+                print("15m timeframe click detected. Live scheduling started.", flush=True)
                 return True
         except Exception:
             pass
+        now = time.monotonic()
+        if now - last_notice >= 15:
+            print("Waiting for you to finish login and click the 15m timeframe...", flush=True)
+            last_notice = now
+        time.sleep(0.5)
     return False
+
+
+def activate_browser(driver):
+    """Bring Selenium Chrome forward so the user can watch the final ten seconds."""
+    try:
+        driver.switch_to.window(driver.current_window_handle)
+        driver.maximize_window()
+        driver.execute_script("window.focus();")
+    except Exception:
+        pass
+    if sys.platform == "darwin":
+        try:
+            subprocess.run(
+                ["osascript", "-e", 'tell application "Google Chrome" to activate'],
+                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+            )
+        except Exception:
+            pass
 
 
 def capture_chart(driver, image_path: Path) -> str:
@@ -281,28 +334,30 @@ def try_open_trade(decision: dict, candle: dict, screenshot: Path, balance: floa
 
 def run(args) -> int:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = args.output_dir / run_id
-    screenshots = run_dir / "screenshots"
+    screenshots = args.screenshot_dir
     screenshots.mkdir(parents=True, exist_ok=True)
     args.profile_dir.mkdir(parents=True, exist_ok=True)
-    append_csv(run_dir / "trades.csv", TRADE_FIELDS)
     append_csv(BASE_DIR / "trades.csv", TRADE_FIELDS)
-    context_path = run_dir / "current_context.txt"
+    append_csv(BASE_DIR / "signals.csv", SIGNAL_FIELDS)
+    context_path = BASE_DIR / "current_context.txt"
     driver = build_driver(args.profile_dir)
     balance, open_trade, closed_trades, step, last_open_time = args.initial_balance, None, 0, 0, None
     try:
         driver.get(args.url)
-        print(f"Binance Futures opened. You have {args.login_wait:.0f}s to log in and arrange the chart.", flush=True)
-        interruptible_wait(args.login_wait)
+        install_15m_click_listener(driver)
+        print("Binance Futures opened. Log in and arrange the chart, then click the 15m timeframe.", flush=True)
+        if not wait_for_user_15m_click(driver):
+            return 0
         dismiss_popups(driver)
-        if select_15m(driver):
-            print("Binance chart timeframe set to 15m.", flush=True)
-        else:
-            print("WARNING: 15m control was not detected; set the visible chart to 15m during login setup.", flush=True)
         while not STOP_REQUESTED and closed_trades < args.trades:
-            request_at = next_candle_request_time()
-            print(f"NEXT CLOSED-CANDLE CHECK in {max(0, request_at - time.time()):.1f}s (15m close + 20s)", flush=True)
-            interruptible_wait(request_at - time.time())
+            candle_close_at = next_candle_close_time()
+            print(f"NEXT 15m CANDLE CLOSE in {max(0, candle_close_at - time.time()):.1f}s", flush=True)
+            interruptible_wait(candle_close_at - time.time())
+            if STOP_REQUESTED:
+                break
+            activate_browser(driver)
+            print(f"Candle closed. Binance brought forward; screenshot in {args.screenshot_delay:.0f}s...", flush=True)
+            interruptible_wait(args.screenshot_delay)
             if STOP_REQUESTED:
                 break
             candle = fetch_latest_closed_kline()
@@ -311,9 +366,9 @@ def run(args) -> int:
             last_open_time = candle["open_time"]
             step += 1
             dismiss_popups(driver)
-            image_path = screenshots / f"step_{step:05d}.png"
+            image_path = screenshots / f"step_{run_id}_{step:05d}.png"
             capture_mode = capture_chart(driver, image_path)
-            shutil.copyfile(image_path, run_dir / "last_screenshot.png")
+            shutil.copyfile(image_path, screenshots / "last_screenshot.png")
             write_effective_context(context_path, args.context, candle, open_trade)
             print(
                 f"STEP {step}: {utc_iso(candle['close_time'])} closed O={candle['open']} H={candle['high']} "
@@ -339,7 +394,6 @@ def run(args) -> int:
                 open_trade["hold_candles"] += 1
                 if exit_for_candle(open_trade, candle):
                     row, balance = close_trade(open_trade, candle, image_path, balance, args)
-                    append_csv(run_dir / "trades.csv", TRADE_FIELDS, row)
                     append_csv(BASE_DIR / "trades.csv", TRADE_FIELDS, row)
                     print(
                         f"STEP {step}: {open_trade['id']} closed {row['Exit Reason']} | "
@@ -347,10 +401,10 @@ def run(args) -> int:
                     )
                     open_trade, closed_this_candle = None, True
                     closed_trades += 1
-                    (run_dir / "open_trade.json").unlink(missing_ok=True)
+                    (BASE_DIR / "open_trade.json").unlink(missing_ok=True)
                     print(f"Completed trades: {closed_trades}/{args.trades}", flush=True)
                 else:
-                    (run_dir / "open_trade.json").write_text(json.dumps(open_trade, indent=2), encoding="utf-8")
+                    (BASE_DIR / "open_trade.json").write_text(json.dumps(open_trade, indent=2), encoding="utf-8")
             if not open_trade and not closed_this_candle and decision["direction"].upper() in {"LONG", "SHORT"}:
                 open_trade, rejection = try_open_trade(decision, candle, image_path, balance, run_id, step, args)
                 if rejection:
@@ -360,14 +414,27 @@ def run(args) -> int:
                         "rationale": f"Live paper signal rejected: {rejection}",
                     })
                 else:
-                    (run_dir / "open_trade.json").write_text(json.dumps(open_trade, indent=2), encoding="utf-8")
+                    (BASE_DIR / "open_trade.json").write_text(json.dumps(open_trade, indent=2), encoding="utf-8")
+                    rr = abs(open_trade["target"] - open_trade["entry"]) / abs(open_trade["entry"] - open_trade["stop"])
+                    append_csv(BASE_DIR / "signals.csv", SIGNAL_FIELDS, {
+                        "Trade ID": open_trade["id"], "Status": "SIGNAL", "Symbol": "BTCUSDT",
+                        "Timeframe": "15m", "Side": open_trade["side"],
+                        "Signal Candle UTC": open_trade["signal_candle_utc"],
+                        "Opened UTC": open_trade["opened_utc"], "Model Entry Price": decision["entry_price"],
+                        "Actual Entry Price": f"{open_trade['entry']:.2f}", "Stop Price": open_trade["stop"],
+                        "Target Price": open_trade["target"], "Quantity BTC": f"{open_trade['quantity']:.3f}",
+                        "Notional USDT": f"{open_trade['entry'] * open_trade['quantity']:.2f}",
+                        "Entry Fee": f"{open_trade['entry_fee']:.4f}", "Reward Risk": f"{rr:.4f}",
+                        "Confidence": open_trade["confidence"], "Rationale": open_trade["rationale"],
+                        "Screenshot": open_trade["entry_screenshot"],
+                    })
                     print(
                         f"STEP {step}: PAPER {open_trade['side']} opened at mark fill {open_trade['entry']:.2f} | "
                         f"qty={open_trade['quantity']:.3f} BTC | fee={open_trade['entry_fee']:.4f}", flush=True,
                     )
             keep = position_was_open or open_trade is not None or closed_this_candle
             if keep:
-                (run_dir / f"decision_{step:05d}.json").write_text(
+                (screenshots / f"decision_{run_id}_{step:05d}.json").write_text(
                     json.dumps({"step": step, "decision": decision, "candle": candle}, indent=2), encoding="utf-8"
                 )
             else:
@@ -380,14 +447,14 @@ def run(args) -> int:
     finally:
         context_path.unlink(missing_ok=True)
         driver.quit()
-        print(f"Run artifacts: {run_dir}", flush=True)
+        print(f"Screenshots: {screenshots} | Signals: {BASE_DIR / 'signals.csv'} | Trades: {BASE_DIR / 'trades.csv'}", flush=True)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=BINANCE_URL)
     parser.add_argument("--trades", type=int, default=1)
-    parser.add_argument("--login-wait", type=float, default=120)
+    parser.add_argument("--screenshot-delay", type=float, default=10)
     parser.add_argument("--initial-balance", type=float, default=1000)
     parser.add_argument("--risk-percent", type=float, default=0.5)
     parser.add_argument("--leverage", type=float, default=1)
@@ -402,10 +469,10 @@ def main() -> int:
     parser.add_argument("--retry-delay", type=float, default=5)
     parser.add_argument("--context", type=Path, default=TRADE_IMAGE_DIR / "qwen_system_context.txt")
     parser.add_argument("--profile-dir", type=Path, default=BASE_DIR / "chrome-profile")
-    parser.add_argument("--output-dir", type=Path, default=BASE_DIR / "runs")
+    parser.add_argument("--screenshot-dir", type=Path, default=BASE_DIR / "screenshots")
     parser.add_argument("--continue-on-error", action="store_true")
     args = parser.parse_args()
-    if any((args.trades < 1, args.login_wait < 0, args.initial_balance <= 0, args.risk_percent <= 0,
+    if any((args.trades < 1, args.screenshot_delay < 0, args.initial_balance <= 0, args.risk_percent <= 0,
             args.leverage <= 0, args.taker_fee < 0, args.slippage_bps < 0, args.quantity_step <= 0)):
         parser.error("invalid non-positive trading/runtime configuration")
     load_env(ROOT / ".env")

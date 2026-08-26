@@ -10,8 +10,8 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BinanceLiveRunnerTests(unittest.TestCase):
-    def test_next_request_is_close_plus_twenty_seconds(self):
-        self.assertEqual(MODULE.next_candle_request_time(901), 1820)
+    def test_next_close_is_next_quarter_hour(self):
+        self.assertEqual(MODULE.next_candle_close_time(901), 1800)
 
     def test_quantity_rounds_down_to_binance_step(self):
         self.assertAlmostEqual(MODULE.round_down(0.0059, 0.001), 0.005)

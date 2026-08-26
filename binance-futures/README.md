@@ -10,9 +10,10 @@ binance-futures/.venv/bin/pip install -r binance-futures/requirements.txt
 binance-futures/.venv/bin/python binance-futures/live_runner.py
 ```
 
-The browser stays visible for the first 120 seconds so you can log in, close dialogs, and arrange the
-chart. The runner attempts to select `15m`, then evaluates only at candle close + 20 seconds. It
-stops after one completed paper trade by default. Use `--trades 10` for ten completed trades.
+There is no fixed login timer. Log in, close dialogs, arrange the chart, and click the `15m`
+timeframe when ready. That click starts live scheduling. At every 15-minute candle close, Chrome is
+brought to the foreground for 10 seconds so you can see the market, then the screenshot is captured.
+The runner stops after one completed paper trade by default. Use `--trades 10` for ten trades.
 
 Paper execution defaults:
 
@@ -32,6 +33,6 @@ binance-futures/.venv/bin/python binance-futures/live_runner.py \
   --taker-fee 0.0005 --slippage-bps 1
 ```
 
-Completed trades are appended to `binance-futures/trades.csv` and the timestamped run's
-`trades.csv`. Only entry/open-position/exit screenshots and decisions are retained, plus one rolling
-`last_screenshot.png`.
+All runs share exactly one `binance-futures/signals.csv`, one `binance-futures/trades.csv`, and one
+`binance-futures/screenshots/` folder. Only entry/open-position/exit screenshots and decisions are
+retained, plus one rolling `last_screenshot.png`; no new run-ID directories are created.

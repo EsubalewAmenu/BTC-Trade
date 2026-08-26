@@ -2,4 +2,8 @@
 chrome-profile/
 runs/
 trades.csv
+signals.csv
+screenshots/
+open_trade.json
+current_context.txt
 __pycache__/
