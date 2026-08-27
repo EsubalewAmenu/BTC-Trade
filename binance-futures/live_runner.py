@@ -83,6 +83,10 @@ def next_candle_close_time(now=None) -> float:
     return (math.floor(now / INTERVAL_SECONDS) + 1) * INTERVAL_SECONDS
 
 
+def candle_screenshot_time(candle_close_at: float, lead_seconds: float = 10) -> float:
+    return candle_close_at - lead_seconds
+
+
 def interruptible_wait(seconds: float):
     deadline = time.monotonic() + max(0, seconds)
     while not STOP_REQUESTED and time.monotonic() < deadline:
@@ -221,10 +225,11 @@ def write_effective_context(path: Path, base_context: Path, candle: dict, open_t
         "close_utc": utc_iso(candle["close_time"]),
     }
     text = base_context.read_text(encoding="utf-8") + (
-        "\n\nBINANCE LIVE OVERRIDE\nThe screenshot includes a still-forming live candle. Analyze the latest "
-        "fully closed candle and earlier structure only. The following Binance Futures API candle "
-        "is authoritative; copy its high, low, close and close_utc exactly into the response and do "
-        f"not OCR those four fields from the chart: {json.dumps(exact)}\n{trade_instruction}\n"
+        "\n\nBINANCE LIVE OVERRIDE\nThe screenshot was captured approximately 10 seconds before the "
+        "rightmost 15-minute candle closed. Analyze that rightmost near-closed candle and earlier "
+        "structure. It has since finalized, and the following Binance Futures API candle is "
+        "authoritative; copy its high, low, close and close_utc exactly into the response and do "
+        f"not substitute other chart values: {json.dumps(exact)}\n{trade_instruction}\n"
         "This is immediate paper execution: entry_price must be within 0.5% of the authoritative "
         "close and the target must not have been touched by that closed candle."
     )
@@ -352,23 +357,36 @@ def run(args) -> int:
         while not STOP_REQUESTED and closed_trades < args.trades:
             candle_close_at = next_candle_close_time()
             print(f"NEXT 15m CANDLE CLOSE in {max(0, candle_close_at - time.time()):.1f}s", flush=True)
-            interruptible_wait(candle_close_at - time.time())
+            screenshot_at = candle_screenshot_time(candle_close_at, args.screenshot_lead)
+            # Bring Binance forward ten seconds before capture, preserving the
+            # existing visible-market preview without showing the next candle.
+            preview_at = screenshot_at - 10
+            interruptible_wait(preview_at - time.time())
             if STOP_REQUESTED:
                 break
             activate_browser(driver)
-            print(f"Candle closed. Binance brought forward; screenshot in {args.screenshot_delay:.0f}s...", flush=True)
-            interruptible_wait(args.screenshot_delay)
+            print(
+                f"Binance brought forward; screenshot in 10s, approximately "
+                f"{args.screenshot_lead:.0f}s before candle close...",
+                flush=True,
+            )
+            interruptible_wait(screenshot_at - time.time())
             if STOP_REQUESTED:
                 break
-            candle = fetch_latest_closed_kline()
-            if candle["open_time"] == last_open_time:
-                continue
-            last_open_time = candle["open_time"]
             step += 1
             dismiss_popups(driver)
             image_path = screenshots / f"step_{run_id}_{step:05d}.png"
             capture_mode = capture_chart(driver, image_path)
             shutil.copyfile(image_path, screenshots / "last_screenshot.png")
+            print(f"STEP {step}: screenshot captured before close; waiting for finalized Binance candle...", flush=True)
+            interruptible_wait(candle_close_at + 1 - time.time())
+            if STOP_REQUESTED:
+                break
+            candle = fetch_latest_closed_kline()
+            if candle["open_time"] == last_open_time:
+                image_path.unlink(missing_ok=True)
+                continue
+            last_open_time = candle["open_time"]
             write_effective_context(context_path, args.context, candle, open_trade)
             print(
                 f"STEP {step}: {utc_iso(candle['close_time'])} closed O={candle['open']} H={candle['high']} "
@@ -454,7 +472,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=BINANCE_URL)
     parser.add_argument("--trades", type=int, default=1)
-    parser.add_argument("--screenshot-delay", type=float, default=10)
+    parser.add_argument("--screenshot-lead", type=float, default=10)
     parser.add_argument("--initial-balance", type=float, default=1000)
     parser.add_argument("--risk-percent", type=float, default=0.5)
     parser.add_argument("--leverage", type=float, default=1)
@@ -472,7 +490,7 @@ def main() -> int:
     parser.add_argument("--screenshot-dir", type=Path, default=BASE_DIR / "screenshots")
     parser.add_argument("--continue-on-error", action="store_true")
     args = parser.parse_args()
-    if any((args.trades < 1, args.screenshot_delay < 0, args.initial_balance <= 0, args.risk_percent <= 0,
+    if any((args.trades < 1, args.screenshot_lead < 0, args.initial_balance <= 0, args.risk_percent <= 0,
             args.leverage <= 0, args.taker_fee < 0, args.slippage_bps < 0, args.quantity_step <= 0)):
         parser.error("invalid non-positive trading/runtime configuration")
     load_env(ROOT / ".env")

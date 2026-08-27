@@ -13,6 +13,9 @@ class BinanceLiveRunnerTests(unittest.TestCase):
     def test_next_close_is_next_quarter_hour(self):
         self.assertEqual(MODULE.next_candle_close_time(901), 1800)
 
+    def test_screenshot_is_ten_seconds_before_close(self):
+        self.assertEqual(MODULE.candle_screenshot_time(1800, 10), 1790)
+
     def test_quantity_rounds_down_to_binance_step(self):
         self.assertAlmostEqual(MODULE.round_down(0.0059, 0.001), 0.005)
 

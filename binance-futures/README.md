@@ -11,8 +11,9 @@ binance-futures/.venv/bin/python binance-futures/live_runner.py
 ```
 
 There is no fixed login timer. Log in, close dialogs, arrange the chart, and click the `15m`
-timeframe when ready. That click starts live scheduling. At every 15-minute candle close, Chrome is
-brought to the foreground for 10 seconds so you can see the market, then the screenshot is captured.
+timeframe when ready. That click starts live scheduling. Chrome is brought forward 20 seconds before
+each 15-minute close, remains visible for 10 seconds, and captures the screenshot 10 seconds before
+the close. After the boundary, the runner fetches the finalized Binance candle and starts analysis.
 The runner stops after one completed paper trade by default. Use `--trades 10` for ten trades.
 
 Paper execution defaults:
