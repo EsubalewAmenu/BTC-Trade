@@ -62,7 +62,9 @@ binance-futures/.venv/bin/python binance-futures/live_runner.py \
 
 BTC quantity is rounded down to Binance's current market step, so the actual notional can be below
 100 USDT. After the market entry fills, close-all stop-loss and take-profit orders are submitted
-immediately. While the position is open, Qwen and screenshot scheduling pause; the runner polls the
-signed Binance position endpoint every five seconds. On closure it reads the actual fills,
+immediately. While the position is open, Qwen and screenshot scheduling pause; the runner checks the
+signed Binance position endpoint once after each 15-minute candle closes. If the runner restarts,
+it resumes the real trade recorded in `open_trade.json` instead of refusing the existing position.
+On closure it reads the actual fills,
 commission, realized PnL, and records them in `trades.csv`. Ctrl-C leaves confirmed protective
 orders active on Binance.

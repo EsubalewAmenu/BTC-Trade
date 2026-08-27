@@ -84,7 +84,11 @@ class BinanceFuturesClient:
 
     def position_amount(self, symbol="BTCUSDT"):
         rows = self.signed("GET", "/fapi/v3/positionRisk", {"symbol": symbol})
-        return Decimal(rows[0]["positionAmt"])
+        # Position Information V3 can return an empty list once a symbol is flat.
+        return Decimal(rows[0]["positionAmt"]) if rows else Decimal(0)
+
+    def open_algo_orders(self, symbol="BTCUSDT"):
+        return self.signed("GET", "/fapi/v1/openAlgoOrders", {"symbol": symbol})
 
     def market_order(self, side, quantity, client_id, reduce_only=False):
         params = {"symbol": "BTCUSDT", "side": side, "type": "MARKET", "quantity": quantity,

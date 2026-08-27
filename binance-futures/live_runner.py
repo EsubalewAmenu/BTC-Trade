@@ -386,15 +386,16 @@ def try_open_real_trade(decision, candle, screenshot, run_id, step, client, rule
 def monitor_real_trade(trade, client, args):
     """Check at candle boundaries; Qwen is deliberately not called while a position is open."""
     print("REAL position tracking resumed. Qwen calls and screenshots are paused while it is open.", flush=True)
+    position = api_call_with_retry("initial position check", client.position_amount)
     while not STOP_REQUESTED:
+        if position == 0:
+            break
         check_at = next_candle_close_time() + 1
         print(f"NEXT POSITION CHECK at 15m candle close in {max(0, check_at - time.time()):.1f}s", flush=True)
         interruptible_wait(check_at - time.time())
         if STOP_REQUESTED:
             return None
         position = api_call_with_retry("position check", client.position_amount)
-        if position == 0:
-            break
         trade["hold_candles"] = trade.get("hold_candles", 0) + 1
         (BASE_DIR / "open_trade.json").write_text(json.dumps(trade, indent=2), encoding="utf-8")
         print(f"Position remains open ({position} BTC).", flush=True)
@@ -460,12 +461,20 @@ def run(args) -> int:
     real_client = None
     real_rules = None
     balance = args.initial_balance
+    tracked_path = BASE_DIR / "open_trade.json"
+    tracked_trade = None
+    if args.mode == "real" and tracked_path.exists():
+        candidate = json.loads(tracked_path.read_text(encoding="utf-8"))
+        if candidate.get("mode") == "real":
+            tracked_trade = candidate
     if args.mode == "real":
         if args.confirm_real_trading != "I_UNDERSTAND":
             raise RuntimeError("real mode requires --confirm-real-trading I_UNDERSTAND")
         real_client = BinanceFuturesClient(os.getenv("BINANCE_API_KEY"), os.getenv("BINANCE_SECRET_KEY"))
-        available = real_client.preflight()
-        real_rules = real_client.symbol_rules()
+        available = api_call_with_retry(
+            "startup preflight", real_client.preflight, "BTCUSDT", tracked_trade is not None
+        )
+        real_rules = api_call_with_retry("symbol rules", real_client.symbol_rules)
         if available <= 0:
             raise RuntimeError("Binance reports no available USDT futures balance")
         print(
@@ -475,6 +484,38 @@ def run(args) -> int:
         )
         if args.preflight_only:
             print("Authenticated read-only preflight passed; no order was placed.", flush=True)
+            return 0
+        if tracked_trade is not None:
+            position = api_call_with_retry("resume validation", real_client.position_amount)
+            expected_sign = 1 if tracked_trade["side"] == "LONG" else -1
+            if position != 0 and (position * expected_sign <= 0 or abs(float(position)) != tracked_trade["quantity"]):
+                raise RuntimeError(
+                    f"Tracked trade does not match Binance position: tracked {tracked_trade['side']} "
+                    f"{tracked_trade['quantity']} BTC, Binance reports {position} BTC"
+                )
+            if position != 0:
+                open_algos = api_call_with_retry("protective-order validation", real_client.open_algo_orders)
+                close_types = {
+                    order.get("orderType") for order in open_algos
+                    if order.get("closePosition") is True or str(order.get("closePosition")).lower() == "true"
+                }
+                missing = {"STOP_MARKET", "TAKE_PROFIT_MARKET"} - close_types
+                if missing:
+                    raise RuntimeError(
+                        "Tracked position is not fully protected on Binance; missing close-position "
+                        f"order(s): {', '.join(sorted(missing))}. Check Binance immediately."
+                    )
+            print(f"Resuming tracked REAL trade {tracked_trade['id']} ({position} BTC currently open).", flush=True)
+            row = monitor_real_trade(tracked_trade, real_client, args)
+            if row is None:
+                print("Tracking stopped; exchange-hosted protective orders remain unchanged.", flush=True)
+                return 0
+            append_csv(BASE_DIR / "trades.csv", TRADE_FIELDS, row)
+            tracked_path.unlink(missing_ok=True)
+            print(
+                f"{tracked_trade['id']} closed {row['Exit Reason']} | actual net={row['Net PnL']} USDT | "
+                f"entry fee={row['Entry Fee']} | exit fee={row['Exit Fee']}", flush=True,
+            )
             return 0
     driver = build_driver(args.profile_dir)
     open_trade, closed_trades, step, last_open_time = None, 0, 0, None
@@ -632,7 +673,6 @@ def main() -> int:
                         help="hard live-order notional ceiling")
     parser.add_argument("--confirm-real-trading", default="",
                         help="real mode safety phrase: I_UNDERSTAND")
-    parser.add_argument("--position-poll-seconds", type=float, default=5.0)
     parser.add_argument("--preflight-only", action="store_true",
                         help="validate real-mode account access and safety state without opening Chrome or placing orders")
     parser.add_argument("--screenshot-lead", type=float, default=10)
@@ -656,8 +696,8 @@ def main() -> int:
     if any((args.trades < 1, args.screenshot_lead < 0, args.initial_balance <= 0, args.risk_percent <= 0,
             args.leverage <= 0, args.taker_fee < 0, args.slippage_bps < 0, args.quantity_step <= 0)):
         parser.error("invalid non-positive trading/runtime configuration")
-    if args.real_notional <= 0 or args.max_real_notional <= 0 or args.position_poll_seconds <= 0:
-        parser.error("real notional, cap, and position polling interval must be positive")
+    if args.real_notional <= 0 or args.max_real_notional <= 0:
+        parser.error("real notional and cap must be positive")
     if args.real_notional > args.max_real_notional:
         parser.error("--real-notional cannot exceed --max-real-notional")
     load_env(ROOT / ".env")

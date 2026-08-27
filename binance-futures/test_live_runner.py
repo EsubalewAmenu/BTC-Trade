@@ -48,6 +48,11 @@ class BinanceLiveRunnerTests(unittest.TestCase):
         self.assertAlmostEqual(fee, 0.0781)
         self.assertAlmostEqual(pnl, 0.2)
 
+    def test_empty_position_response_means_flat(self):
+        client = object.__new__(MODULE.BinanceFuturesClient)
+        client.signed = lambda *_args, **_kwargs: []
+        self.assertEqual(client.position_amount(), Decimal("0"))
+
 
 if __name__ == "__main__":
     unittest.main()
