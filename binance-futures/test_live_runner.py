@@ -1,6 +1,7 @@
 import importlib.util
 import unittest
 from pathlib import Path
+from decimal import Decimal
 
 
 PATH = Path(__file__).with_name("live_runner.py")
@@ -31,6 +32,21 @@ class BinanceLiveRunnerTests(unittest.TestCase):
     def test_adverse_slippage(self):
         self.assertAlmostEqual(MODULE.adverse_fill(100, "LONG", True, 1), 100.01)
         self.assertAlmostEqual(MODULE.adverse_fill(100, "LONG", False, 1), 99.99)
+
+    def test_real_quantity_never_rounds_above_notional(self):
+        self.assertEqual(MODULE.decimal_floor(0.00128, Decimal("0.001")), Decimal("0.001"))
+
+    def test_weighted_real_fills_include_actual_commission_and_pnl(self):
+        fills = [
+            {"price": "78000", "qty": "0.001", "commission": "0.039", "commissionAsset": "USDT",
+             "realizedPnl": "0"},
+            {"price": "78200", "qty": "0.001", "commission": "0.0391", "commissionAsset": "USDT",
+             "realizedPnl": "0.2"},
+        ]
+        price, qty, fee, pnl = MODULE.weighted_fill(fills)
+        self.assertEqual((price, qty), (78100.0, 0.002))
+        self.assertAlmostEqual(fee, 0.0781)
+        self.assertAlmostEqual(pnl, 0.2)
 
 
 if __name__ == "__main__":

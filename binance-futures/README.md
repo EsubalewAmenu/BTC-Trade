@@ -1,8 +1,9 @@
-# Binance Futures live paper trader
+# Binance Futures paper/real trader
 
 This is separate from `trade-image`. It opens the Binance BTCUSDT perpetual page for live visual
 context, uses exact public Binance USD-M Futures 15-minute klines for candle/exit prices, and sends
-screenshots only to local Qwen/Ollama. It never submits, previews, or clicks a real Binance order.
+screenshots only to local Qwen/Ollama. Paper mode remains the default. Real mode is explicit,
+hard-capped, and uses signed Binance USD-M API orders rather than browser clicks.
 
 ```bash
 /usr/bin/python3 -m venv binance-futures/.venv
@@ -37,3 +38,31 @@ binance-futures/.venv/bin/python binance-futures/live_runner.py \
 All runs share exactly one `binance-futures/signals.csv`, one `binance-futures/trades.csv`, and one
 `binance-futures/screenshots/` folder. Only entry/open-position/exit screenshots and decisions are
 retained, plus one rolling `last_screenshot.png`; no new run-ID directories are created.
+
+## Guarded real mode
+
+The `.env` file must contain `BINANCE_API_KEY` and `BINANCE_SECRET_KEY`. The key needs USD-M Futures
+read and trading permission, and its IP restriction must allow the current public IP. Real mode
+requires One-way Position Mode and refuses to start if a BTCUSDT position or order already exists.
+
+First run the read-only check (it cannot place an order):
+
+```bash
+binance-futures/.venv/bin/python binance-futures/live_runner.py \
+  --mode real --confirm-real-trading I_UNDERSTAND --preflight-only
+```
+
+Then run one real trade with a desired/hard-capped notional of 100 USDT:
+
+```bash
+binance-futures/.venv/bin/python binance-futures/live_runner.py \
+  --mode real --trades 1 --real-notional 100 --max-real-notional 100 \
+  --confirm-real-trading I_UNDERSTAND
+```
+
+BTC quantity is rounded down to Binance's current market step, so the actual notional can be below
+100 USDT. After the market entry fills, close-all stop-loss and take-profit orders are submitted
+immediately. While the position is open, Qwen and screenshot scheduling pause; the runner polls the
+signed Binance position endpoint every five seconds. On closure it reads the actual fills,
+commission, realized PnL, and records them in `trades.csv`. Ctrl-C leaves confirmed protective
+orders active on Binance.

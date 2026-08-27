@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Paper-trade live BTCUSDT pullbacks from Binance Futures screenshots and market data."""
+"""Paper or guarded real BTCUSDT pullback trading from Binance Futures charts."""
 
 import argparse
 import csv
@@ -21,7 +21,9 @@ BASE_DIR = Path(__file__).resolve().parent
 ROOT = BASE_DIR.parent
 TRADE_IMAGE_DIR = ROOT / "trade-image"
 sys.path.insert(0, str(TRADE_IMAGE_DIR))
+sys.path.insert(0, str(BASE_DIR))
 from analyze_chart import analyze, load_env  # noqa: E402
+from real_trading import BinanceFuturesClient, decimal_floor, weighted_fill  # noqa: E402
 
 
 BINANCE_URL = "https://www.binance.com/en/futures/BTCUSDT"
@@ -337,6 +339,116 @@ def try_open_trade(decision: dict, candle: dict, screenshot: Path, balance: floa
     }, None
 
 
+def try_open_real_trade(decision, candle, screenshot, run_id, step, client, rules, args):
+    side = decision["direction"].upper()
+    mark = fetch_mark_price()
+    stop, target = float(decision["stop_price"]), float(decision["target_price"])
+    if not (stop < mark < target if side == "LONG" else target < mark < stop):
+        return None, f"live mark {mark:.2f} invalidated model geometry"
+    if abs(target - mark) / abs(mark - stop) < 1.999:
+        return None, "live mark reduced reward/risk below 2.0"
+    step_size, min_qty, tick = rules
+    quantity = decimal_floor(args.real_notional / mark, step_size)
+    if quantity < min_qty:
+        return None, f"{args.real_notional:.2f} USDT is below the BTCUSDT minimum market quantity"
+    if float(quantity) * mark > args.max_real_notional + 0.01:
+        return None, "calculated order exceeds the hard real-notional cap"
+    trade_id = f"{run_id}-{step:05d}"
+    entry_side, exit_side = ("BUY", "SELL") if side == "LONG" else ("SELL", "BUY")
+    entry_order = client.market_order(entry_side, str(quantity), f"pb-{trade_id}-entry")
+    entry_trades = client.user_trades(entry_order["orderId"])
+    entry, filled_qty, entry_fee, _ = weighted_fill(entry_trades)
+    stop = float(decimal_floor(stop, tick))
+    target = float(decimal_floor(target, tick))
+    try:
+        stop_order = client.protective_order(exit_side, "STOP_MARKET", stop, f"pb-{trade_id}-stop")
+        target_order = client.protective_order(exit_side, "TAKE_PROFIT_MARKET", target, f"pb-{trade_id}-target")
+    except Exception:
+        # Never leave a successfully-filled live entry unprotected.
+        try:
+            if 'stop_order' in locals():
+                client.cancel_algo(stop_order["algoId"])
+        finally:
+            client.market_order(exit_side, str(quantity), f"pb-{trade_id}-emergency", reduce_only=True)
+        raise RuntimeError("protective orders failed; the new position was emergency-closed")
+    return {
+        "id": trade_id, "run_id": run_id, "mode": "real", "side": side,
+        "opened_utc": datetime.now(timezone.utc).isoformat(), "opened_ms": int(time.time() * 1000),
+        "signal_candle_utc": utc_iso(candle["close_time"]), "entry": entry, "stop": stop,
+        "target": target, "quantity": filled_qty, "entry_fee": entry_fee,
+        "entry_order_id": entry_order["orderId"], "stop_algo_id": stop_order["algoId"],
+        "target_algo_id": target_order["algoId"], "confidence": decision["confidence"],
+        "rationale": decision["rationale"], "entry_screenshot": str(screenshot.resolve()),
+        "hold_candles": 0,
+    }, None
+
+
+def monitor_real_trade(trade, client, args):
+    """Check at candle boundaries; Qwen is deliberately not called while a position is open."""
+    print("REAL position tracking resumed. Qwen calls and screenshots are paused while it is open.", flush=True)
+    while not STOP_REQUESTED:
+        check_at = next_candle_close_time() + 1
+        print(f"NEXT POSITION CHECK at 15m candle close in {max(0, check_at - time.time()):.1f}s", flush=True)
+        interruptible_wait(check_at - time.time())
+        if STOP_REQUESTED:
+            return None
+        position = api_call_with_retry("position check", client.position_amount)
+        if position == 0:
+            break
+        trade["hold_candles"] = trade.get("hold_candles", 0) + 1
+        (BASE_DIR / "open_trade.json").write_text(json.dumps(trade, indent=2), encoding="utf-8")
+        print(f"Position remains open ({position} BTC).", flush=True)
+    if STOP_REQUESTED:
+        return None
+    stop_state = api_call_with_retry("stop order status", client.query_algo, trade["stop_algo_id"])
+    target_state = api_call_with_retry("target order status", client.query_algo, trade["target_algo_id"])
+    stop_triggered = bool(stop_state.get("actualOrderId"))
+    target_triggered = bool(target_state.get("actualOrderId"))
+    if stop_triggered or target_triggered:
+        winning = stop_state if stop_triggered else target_state
+        losing = target_state if stop_triggered else stop_state
+        api_call_with_retry("cancel unused protective order", client.cancel_algo, losing["algoId"])
+        fills = api_call_with_retry("exit fills", client.user_trades, winning["actualOrderId"])
+        exit_reason = "STOP" if stop_triggered else "TARGET"
+    else:
+        # Covers a manual close or manually replaced protective order.
+        all_fills = api_call_with_retry("trade history", client.user_trades_since, trade["opened_ms"])
+        fills = [item for item in all_fills if int(item["orderId"]) != int(trade["entry_order_id"])]
+        if not fills:
+            raise RuntimeError("position is flat but no exit fill is available yet; restart to reconcile")
+        exit_reason = "MANUAL/OTHER"
+    exit_price, _qty, exit_fee, realized = weighted_fill(fills)
+    net = realized - trade["entry_fee"] - exit_fee
+    return {
+        "Trade ID": trade["id"], "Status": "CLOSED", "Symbol": "BTCUSDT", "Timeframe": "15m",
+        "Side": trade["side"], "Opened UTC": trade["opened_utc"],
+        "Closed UTC": datetime.now(timezone.utc).isoformat(), "Signal Candle UTC": trade["signal_candle_utc"],
+        "Entry Price": f"{trade['entry']:.2f}", "Exit Price": f"{exit_price:.2f}",
+        "Quantity BTC": f"{trade['quantity']:.3f}",
+        "Notional USDT": f"{trade['entry'] * trade['quantity']:.2f}", "Margin USDT": "Binance account",
+        "Leverage": "Binance account", "Stop Price": trade["stop"], "Target Price": trade["target"],
+        "Entry Fee": f"{trade['entry_fee']:.8f}", "Exit Fee": f"{exit_fee:.8f}",
+        "Gross PnL": f"{realized:.8f}", "Net PnL": f"{net:.8f}",
+        "R Multiple": "", "Exit Reason": exit_reason, "Hold Candles": trade.get("hold_candles", ""),
+        "Confidence": trade["confidence"], "Rationale": trade["rationale"],
+        "Entry Screenshot": trade["entry_screenshot"], "Exit Screenshot": "",
+        "Balance After": "see Binance", "Run ID": trade["run_id"],
+    }
+
+
+def api_call_with_retry(label, function, *args, attempts=6):
+    """Retry temporary TLS/network failures without losing exchange-hosted protection."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return function(*args)
+        except Exception as exc:
+            if attempt == attempts:
+                raise
+            delay = min(60, 5 * (2 ** (attempt - 1)))
+            print(f"Binance {label} failed ({attempt}/{attempts}): {exc}; retrying in {delay}s", flush=True)
+            interruptible_wait(delay)
+
+
 def run(args) -> int:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     screenshots = args.screenshot_dir
@@ -345,8 +457,27 @@ def run(args) -> int:
     append_csv(BASE_DIR / "trades.csv", TRADE_FIELDS)
     append_csv(BASE_DIR / "signals.csv", SIGNAL_FIELDS)
     context_path = BASE_DIR / "current_context.txt"
+    real_client = None
+    real_rules = None
+    balance = args.initial_balance
+    if args.mode == "real":
+        if args.confirm_real_trading != "I_UNDERSTAND":
+            raise RuntimeError("real mode requires --confirm-real-trading I_UNDERSTAND")
+        real_client = BinanceFuturesClient(os.getenv("BINANCE_API_KEY"), os.getenv("BINANCE_SECRET_KEY"))
+        available = real_client.preflight()
+        real_rules = real_client.symbol_rules()
+        if available <= 0:
+            raise RuntimeError("Binance reports no available USDT futures balance")
+        print(
+            f"REAL MODE ARMED | available={available:.2f} USDT | requested notional="
+            f"{args.real_notional:.2f} USDT | hard cap={args.max_real_notional:.2f} USDT",
+            flush=True,
+        )
+        if args.preflight_only:
+            print("Authenticated read-only preflight passed; no order was placed.", flush=True)
+            return 0
     driver = build_driver(args.profile_dir)
-    balance, open_trade, closed_trades, step, last_open_time = args.initial_balance, None, 0, 0, None
+    open_trade, closed_trades, step, last_open_time = None, 0, 0, None
     try:
         driver.get(args.url)
         install_15m_click_listener(driver)
@@ -424,7 +555,14 @@ def run(args) -> int:
                 else:
                     (BASE_DIR / "open_trade.json").write_text(json.dumps(open_trade, indent=2), encoding="utf-8")
             if not open_trade and not closed_this_candle and decision["direction"].upper() in {"LONG", "SHORT"}:
-                open_trade, rejection = try_open_trade(decision, candle, image_path, balance, run_id, step, args)
+                if args.mode == "real":
+                    open_trade, rejection = try_open_real_trade(
+                        decision, candle, image_path, run_id, step, real_client, real_rules, args
+                    )
+                else:
+                    open_trade, rejection = try_open_trade(
+                        decision, candle, image_path, balance, run_id, step, args
+                    )
                 if rejection:
                     decision.update({
                         "direction": "WAIT", "entry_price": None, "stop_price": None,
@@ -447,9 +585,24 @@ def run(args) -> int:
                         "Screenshot": open_trade["entry_screenshot"],
                     })
                     print(
-                        f"STEP {step}: PAPER {open_trade['side']} opened at mark fill {open_trade['entry']:.2f} | "
+                        f"STEP {step}: {args.mode.upper()} {open_trade['side']} opened at fill {open_trade['entry']:.2f} | "
                         f"qty={open_trade['quantity']:.3f} BTC | fee={open_trade['entry_fee']:.4f}", flush=True,
                     )
+                    if args.mode == "real":
+                        row = monitor_real_trade(open_trade, real_client, args)
+                        if row is None:
+                            print("Stopping monitor; Binance protective stop and target remain active.", flush=True)
+                            break
+                        append_csv(BASE_DIR / "trades.csv", TRADE_FIELDS, row)
+                        print(
+                            f"{open_trade['id']} closed {row['Exit Reason']} | actual net={row['Net PnL']} USDT | "
+                            f"entry fee={row['Entry Fee']} | exit fee={row['Exit Fee']}", flush=True,
+                        )
+                        open_trade = None
+                        closed_this_candle = True
+                        closed_trades += 1
+                        (BASE_DIR / "open_trade.json").unlink(missing_ok=True)
+                        print(f"Completed trades: {closed_trades}/{args.trades}", flush=True)
             keep = position_was_open or open_trade is not None or closed_this_candle
             if keep:
                 (screenshots / f"decision_{run_id}_{step:05d}.json").write_text(
@@ -472,6 +625,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=BINANCE_URL)
     parser.add_argument("--trades", type=int, default=1)
+    parser.add_argument("--mode", choices=("paper", "real"), default="paper")
+    parser.add_argument("--real-notional", type=float, default=100.0,
+                        help="desired live entry notional in USDT (real mode only)")
+    parser.add_argument("--max-real-notional", type=float, default=100.0,
+                        help="hard live-order notional ceiling")
+    parser.add_argument("--confirm-real-trading", default="",
+                        help="real mode safety phrase: I_UNDERSTAND")
+    parser.add_argument("--position-poll-seconds", type=float, default=5.0)
+    parser.add_argument("--preflight-only", action="store_true",
+                        help="validate real-mode account access and safety state without opening Chrome or placing orders")
     parser.add_argument("--screenshot-lead", type=float, default=10)
     parser.add_argument("--initial-balance", type=float, default=1000)
     parser.add_argument("--risk-percent", type=float, default=0.5)
@@ -493,6 +656,10 @@ def main() -> int:
     if any((args.trades < 1, args.screenshot_lead < 0, args.initial_balance <= 0, args.risk_percent <= 0,
             args.leverage <= 0, args.taker_fee < 0, args.slippage_bps < 0, args.quantity_step <= 0)):
         parser.error("invalid non-positive trading/runtime configuration")
+    if args.real_notional <= 0 or args.max_real_notional <= 0 or args.position_poll_seconds <= 0:
+        parser.error("real notional, cap, and position polling interval must be positive")
+    if args.real_notional > args.max_real_notional:
+        parser.error("--real-notional cannot exceed --max-real-notional")
     load_env(ROOT / ".env")
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
