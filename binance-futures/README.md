@@ -2,7 +2,8 @@
 
 This is separate from `trade-image`. It opens the Binance BTCUSDT perpetual page for live visual
 context, uses exact public Binance USD-M Futures 15-minute klines for candle/exit prices, and sends
-screenshots only to local Qwen/Ollama. Paper mode remains the default. Real mode is explicit,
+screenshots to Gemini using `GEMINI_API_KEY` from the root `.env`. The detailed structure-strategy prompt
+is `binance-futures/gemini_system_context.txt`. Paper mode remains the default. Real mode is explicit,
 hard-capped, and uses signed Binance USD-M API orders rather than browser clicks.
 
 ```bash
@@ -62,7 +63,7 @@ binance-futures/.venv/bin/python binance-futures/live_runner.py \
 
 BTC quantity is rounded down to Binance's current market step, so the actual notional can be below
 100 USDT. After the market entry fills, close-all stop-loss and take-profit orders are submitted
-immediately. While the position is open, Qwen and screenshot scheduling pause; the runner checks the
+immediately. While the position is open, Gemini and screenshot scheduling pause; the runner checks the
 signed Binance position endpoint once after each 15-minute candle closes. If the runner restarts,
 it resumes the real trade recorded in `open_trade.json` instead of refusing the existing position.
 On closure it reads the actual fills,

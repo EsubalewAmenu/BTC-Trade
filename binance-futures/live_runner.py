@@ -214,10 +214,10 @@ def capture_chart(driver, image_path: Path) -> str:
 
 
 def write_effective_context(path: Path, base_context: Path, candle: dict, open_trade):
-    trade_instruction = "No paper position is open; evaluate a new pullback setup."
+    trade_instruction = "No position is open; evaluate a new pullback setup."
     if open_trade:
         trade_instruction = (
-            "A paper position is open. Return WAIT with null entry/stop/target; do not propose "
+            "A position is open. Return WAIT with null entry/stop/target; do not propose "
             f"another trade. Open position: {json.dumps(open_trade)}"
         )
     exact = {
@@ -232,7 +232,7 @@ def write_effective_context(path: Path, base_context: Path, candle: dict, open_t
         "structure. It has since finalized, and the following Binance Futures API candle is "
         "authoritative; copy its high, low, close and close_utc exactly into the response and do "
         f"not substitute other chart values: {json.dumps(exact)}\n{trade_instruction}\n"
-        "This is immediate paper execution: entry_price must be within 0.5% of the authoritative "
+        "This is immediate market execution: entry_price must be within 0.5% of the authoritative "
         "close and the target must not have been touched by that closed candle."
     )
     path.write_text(text, encoding="utf-8")
@@ -243,13 +243,13 @@ def analyze_with_retry(image_path: Path, context_path: Path, args, open_trade):
         try:
             return analyze(
                 image_path, context_path, args.model, args.llm_timeout, open_trade=None,
-                provider="qwen", qwen_host=args.qwen_host, num_ctx=args.num_ctx,
+                provider="gemini",
             )
         except Exception as exc:
             if attempt == args.llm_attempts:
                 raise
             delay = args.retry_delay * (2 ** (attempt - 1))
-            print(f"Qwen attempt {attempt}/{args.llm_attempts} failed: {exc}; retrying in {delay}s", flush=True)
+            print(f"Gemini attempt {attempt}/{args.llm_attempts} failed: {exc}; retrying in {delay}s", flush=True)
             interruptible_wait(delay)
 
 
@@ -562,14 +562,14 @@ def run(args) -> int:
             write_effective_context(context_path, args.context, candle, open_trade)
             print(
                 f"STEP {step}: {utc_iso(candle['close_time'])} closed O={candle['open']} H={candle['high']} "
-                f"L={candle['low']} C={candle['close']} | screenshot={capture_mode} | requesting QWEN...",
+                f"L={candle['low']} C={candle['close']} | screenshot={capture_mode} | requesting GEMINI...",
                 flush=True,
             )
             position_was_open = open_trade is not None
             try:
                 decision, _raw = analyze_with_retry(image_path, context_path, args, open_trade)
             except Exception as exc:
-                print(f"STEP {step}: QWEN error: {exc}", file=sys.stderr, flush=True)
+                print(f"STEP {step}: GEMINI error: {exc}", file=sys.stderr, flush=True)
                 if not position_was_open:
                     image_path.unlink(missing_ok=True)
                 if not args.continue_on_error:
@@ -682,13 +682,11 @@ def main() -> int:
     parser.add_argument("--taker-fee", type=float, default=0.0005)
     parser.add_argument("--slippage-bps", type=float, default=1)
     parser.add_argument("--quantity-step", type=float, default=0.001)
-    parser.add_argument("--model", default=os.getenv("QWEN_MODEL", "qwen3-vl:8b-instruct"))
-    parser.add_argument("--qwen-host", default=os.getenv("QWEN_HOST", "http://127.0.0.1:11434"))
-    parser.add_argument("--num-ctx", type=int, default=8192)
+    parser.add_argument("--model", default=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"))
     parser.add_argument("--llm-timeout", type=int, default=300)
     parser.add_argument("--llm-attempts", type=int, default=3)
     parser.add_argument("--retry-delay", type=float, default=5)
-    parser.add_argument("--context", type=Path, default=TRADE_IMAGE_DIR / "qwen_system_context.txt")
+    parser.add_argument("--context", type=Path, default=BASE_DIR / "gemini_system_context.txt")
     parser.add_argument("--profile-dir", type=Path, default=BASE_DIR / "chrome-profile")
     parser.add_argument("--screenshot-dir", type=Path, default=BASE_DIR / "screenshots")
     parser.add_argument("--continue-on-error", action="store_true")

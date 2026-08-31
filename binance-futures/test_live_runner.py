@@ -2,6 +2,8 @@ import importlib.util
 import unittest
 from pathlib import Path
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 PATH = Path(__file__).with_name("live_runner.py")
@@ -52,6 +54,23 @@ class BinanceLiveRunnerTests(unittest.TestCase):
         client = object.__new__(MODULE.BinanceFuturesClient)
         client.signed = lambda *_args, **_kwargs: []
         self.assertEqual(client.position_amount(), Decimal("0"))
+
+    def test_live_chart_analysis_uses_gemini(self):
+        args = SimpleNamespace(model="gemini-test", llm_timeout=30, llm_attempts=1, retry_delay=1)
+        expected = ({"direction": "WAIT"}, {"raw": True})
+        with patch.object(MODULE, "analyze", return_value=expected) as analyze:
+            result = MODULE.analyze_with_retry(Path("chart.png"), Path("context.txt"), args, None)
+        self.assertEqual(result, expected)
+        self.assertEqual(analyze.call_args.kwargs["provider"], "gemini")
+
+    def test_gemini_context_has_strict_identifiable_setups(self):
+        context = (PATH.parent / "gemini_system_context.txt").read_text(encoding="utf-8")
+        self.assertIn("ALLOWED SETUP 1 — TREND PULLBACK CONTINUATION", context)
+        self.assertIn("ALLOWED SETUP 2 — BREAKOUT AND RETEST", context)
+        self.assertIn("ALLOWED SETUP 3 — RANGE-EDGE REJECTION", context)
+        self.assertIn("ALLOWED SETUP 4 — CONFIRMED STRUCTURE REVERSAL", context)
+        self.assertIn("INVALIDATION — STRUCTURAL STOP WITH NOISE BUFFER", context)
+        self.assertIn("Do not claim a target is 2R without showing correct arithmetic", context)
 
 
 if __name__ == "__main__":

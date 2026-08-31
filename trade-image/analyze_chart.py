@@ -177,7 +177,8 @@ def analyze(
     image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
     user_prompt = (
         "Analyze this chart screenshot under the field guide. First inspect visible "
-        "structure, EMA50, volume, pullback location, confirmation, invalidation, "
+        "structure, EMA50, volume, the location and required stages of any allowed setup, "
+        "confirmation, invalidation, "
         "and realistic 2R space. Read candle_high, candle_low, candle_close and "
         "candle_utc from the rightmost fully revealed replay candle and visible OHLC legend. "
         "Return only the required JSON object."
@@ -211,7 +212,11 @@ def analyze(
                 {"inlineData": {"mimeType": mime_type, "data": image_data}},
                 {"text": user_prompt},
             ]}],
-            "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+            "generationConfig": {
+                "temperature": 0.1,
+                "responseMimeType": "application/json",
+                "responseJsonSchema": RESULT_SCHEMA,
+            },
         }
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
